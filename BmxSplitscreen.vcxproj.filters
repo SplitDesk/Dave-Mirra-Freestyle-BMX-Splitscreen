@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="common">
+      <UniqueIdentifier>{3EE60AC6-6BB3-5CB1-8E57-6FB139ED3106}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="config">
+      <UniqueIdentifier>{E458A0EB-36EA-5598-BEDE-D3AAEE5E6E8F}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="core">
+      <UniqueIdentifier>{786A0DFE-5ECC-570B-BD4C-FC71FF07958C}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="game">
+      <UniqueIdentifier>{3B72C35C-F80E-55C3-A27F-0F843A375FB9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="hook">
+      <UniqueIdentifier>{9DDDCB25-5C4C-5775-B942-1EA30F57CAA5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="input">
+      <UniqueIdentifier>{79F1FD69-746E-5771-BC30-4D9F2465FF72}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="mod">
+      <UniqueIdentifier>{F2A6C69C-8CEB-5943-B378-67DF2FA63C9A}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\common\config.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="src\common\ini_file.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="src\common\log.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\goal_states.cpp">
+      <Filter>core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\join_slots.cpp">
+      <Filter>core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\menu_buttons.cpp">
+      <Filter>core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\pad_layout.cpp">
+      <Filter>core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\pad_mapping.cpp">
+      <Filter>core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\play_rules.cpp">
+      <Filter>core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\screen_items.cpp">
+      <Filter>core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\select_panels.cpp">
+      <Filter>core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\split_layout.cpp">
+      <Filter>core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\view_window.cpp">
+      <Filter>core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\game\game_version.cpp">
+      <Filter>game</Filter>
+    </ClCompile>
+    <ClCompile Include="src\hook\hook.cpp">
+      <Filter>hook</Filter>
+    </ClCompile>
+    <ClCompile Include="src\input\gamepads.cpp">
+      <Filter>input</Filter>
+    </ClCompile>
+    <ClCompile Include="src\mod\audio.cpp">
+      <Filter>mod</Filter>
+    </ClCompile>
+    <ClCompile Include="src\mod\button_icons.cpp">
+      <Filter>mod</Filter>
+    </ClCompile>
+    <ClCompile Include="src\mod\controller_options.cpp">
+      <Filter>mod</Filter>
+    </ClCompile>
+    <ClCompile Include="src\mod\crash_log.cpp">
+      <Filter>mod</Filter>
+    </ClCompile>
+    <ClCompile Include="src\mod\dllmain.cpp">
+      <Filter>mod</Filter>
+    </ClCompile>
+    <ClCompile Include="src\mod\extra_riders.cpp">
+      <Filter>mod</Filter>
+    </ClCompile>
+    <ClCompile Include="src\mod\frontend.cpp">
+      <Filter>mod</Filter>
+    </ClCompile>
+    <ClCompile Include="src\mod\gui_buffers.cpp">
+      <Filter>mod</Filter>
+    </ClCompile>
+    <ClCompile Include="src\mod\hud.cpp">
+      <Filter>mod</Filter>
+    </ClCompile>
+    <ClCompile Include="src\mod\input.cpp">
+      <Filter>mod</Filter>
+    </ClCompile>
+    <ClCompile Include="src\mod\low_memory.cpp">
+      <Filter>mod</Filter>
+    </ClCompile>
+    <ClCompile Include="src\mod\pause_options.cpp">
+      <Filter>mod</Filter>
+    </ClCompile>
+    <ClCompile Include="src\mod\perf.cpp">
+      <Filter>mod</Filter>
+    </ClCompile>
+    <ClCompile Include="src\mod\players_score.cpp">
+      <Filter>mod</Filter>
+    </ClCompile>
+    <ClCompile Include="src\mod\render_state.cpp">
+      <Filter>mod</Filter>
+    </ClCompile>
+    <ClCompile Include="src\mod\rider_select.cpp">
+      <Filter>mod</Filter>
+    </ClCompile>
+    <ClCompile Include="src\mod\riders.cpp">
+      <Filter>mod</Filter>
+    </ClCompile>
+    <ClCompile Include="src\mod\scoring.cpp">
+      <Filter>mod</Filter>
+    </ClCompile>
+    <ClCompile Include="src\mod\splitscreen.cpp">
+      <Filter>mod</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\common\config.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\ini_file.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\log.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\version.hpp">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\goal_states.hpp">
+      <Filter>core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\join_slots.hpp">
+      <Filter>core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\limits.hpp">
+      <Filter>core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\menu_buttons.hpp">
+      <Filter>core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\pad_layout.hpp">
+      <Filter>core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\pad_mapping.hpp">
+      <Filter>core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\play_rules.hpp">
+      <Filter>core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\screen_items.hpp">
+      <Filter>core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\select_panels.hpp">
+      <Filter>core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\split_layout.hpp">
+      <Filter>core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\view_window.hpp">
+      <Filter>core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\game\addresses.hpp">
+      <Filter>game</Filter>
+    </ClInclude>
+    <ClInclude Include="src\game\engine.hpp">
+      <Filter>game</Filter>
+    </ClInclude>
+    <ClInclude Include="src\game\game_version.hpp">
+      <Filter>game</Filter>
+    </ClInclude>
+    <ClInclude Include="src\hook\hook.hpp">
+      <Filter>hook</Filter>
+    </ClInclude>
+    <ClInclude Include="src\input\gamepads.hpp">
+      <Filter>input</Filter>
+    </ClInclude>
+    <ClInclude Include="src\mod\audio.hpp">
+      <Filter>mod</Filter>
+    </ClInclude>
+    <ClInclude Include="src\mod\button_icons.hpp">
+      <Filter>mod</Filter>
+    </ClInclude>
+    <ClInclude Include="src\mod\controller_options.hpp">
+      <Filter>mod</Filter>
+    </ClInclude>
+    <ClInclude Include="src\mod\crash_log.hpp">
+      <Filter>mod</Filter>
+    </ClInclude>
+    <ClInclude Include="src\mod\extra_riders.hpp">
+      <Filter>mod</Filter>
+    </ClInclude>
+    <ClInclude Include="src\mod\frontend.hpp">
+      <Filter>mod</Filter>
+    </ClInclude>
+    <ClInclude Include="src\mod\gui_buffers.hpp">
+      <Filter>mod</Filter>
+    </ClInclude>
+    <ClInclude Include="src\mod\hud.hpp">
+      <Filter>mod</Filter>
+    </ClInclude>
+    <ClInclude Include="src\mod\input.hpp">
+      <Filter>mod</Filter>
+    </ClInclude>
+    <ClInclude Include="src\mod\low_memory.hpp">
+      <Filter>mod</Filter>
+    </ClInclude>
+    <ClInclude Include="src\mod\pause_options.hpp">
+      <Filter>mod</Filter>
+    </ClInclude>
+    <ClInclude Include="src\mod\perf.hpp">
+      <Filter>mod</Filter>
+    </ClInclude>
+    <ClInclude Include="src\mod\players_score.hpp">
+      <Filter>mod</Filter>
+    </ClInclude>
+    <ClInclude Include="src\mod\render_state.hpp">
+      <Filter>mod</Filter>
+    </ClInclude>
+    <ClInclude Include="src\mod\rider_select.hpp">
+      <Filter>mod</Filter>
+    </ClInclude>
+    <ClInclude Include="src\mod\riders.hpp">
+      <Filter>mod</Filter>
+    </ClInclude>
+    <ClInclude Include="src\mod\scoring.hpp">
+      <Filter>mod</Filter>
+    </ClInclude>
+    <ClInclude Include="src\mod\splitscreen.hpp">
+      <Filter>mod</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="config\BmxSplitscreen.ini">
+      <Filter>config</Filter>
+    </None>
+  </ItemGroup>
+</Project>

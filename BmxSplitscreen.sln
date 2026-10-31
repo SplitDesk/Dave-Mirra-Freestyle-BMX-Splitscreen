@@ -1,0 +1,33 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "BmxSplitscreen", "BmxSplitscreen.vcxproj", "{40659D89-BCA0-4752-A536-BCCAD3778BB4}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{B4C1E7A2-5D3F-4E8B-9A6C-2F1D0E7B3A54}"
+	ProjectSection(SolutionItems) = preProject
+		.editorconfig = .editorconfig
+		.gitignore = .gitignore
+		README.md = README.md
+		docs\ADDRESS.md = docs\ADDRESS.md
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{40659D89-BCA0-4752-A536-BCCAD3778BB4}.Debug|Win32.ActiveCfg = Debug|Win32
+		{40659D89-BCA0-4752-A536-BCCAD3778BB4}.Debug|Win32.Build.0 = Debug|Win32
+		{40659D89-BCA0-4752-A536-BCCAD3778BB4}.Release|Win32.ActiveCfg = Release|Win32
+		{40659D89-BCA0-4752-A536-BCCAD3778BB4}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {F2047693-3E1B-4469-9878-2F9CD461E00E}
+	EndGlobalSection
+EndGlobal
