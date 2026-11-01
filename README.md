@@ -34,6 +34,10 @@ off on any other version.
 - Choose MULTIPLAYER and a game mode. On the rider select, the other players join
   by pressing confirm or Start on their pad.
 
+## Limitations
+- Progress is saved to player 1's rider only. In ProQuest, every player's completed challenges count toward it.
+- Replays only work for player 1's run.
+
 ## Credits
 
 - [SDL](https://github.com/libsdl-org/SDL)
