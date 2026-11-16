@@ -11,37 +11,57 @@ namespace {
 
 // The mod's code range.
 uintptr_t g_selfBegin = 0, g_selfEnd = 0;
-volatile LONG g_reported = 0;
+volatile LONG g_reported = 0;       // a crash in the exe or the mod was reported
+volatile LONG g_reportedOther = 0;  // an exception in another module was reported
 
 bool inExe(uintptr_t a) { return a >= game::addr::kCodeBegin && a < game::addr::kCodeEnd; }
 bool inSelf(uintptr_t a) { return a >= g_selfBegin && a < g_selfEnd; }
 
-// Formats a code address, relative to the mod when it is in the mod.
+// Formats a code address: relative to the mod in the mod, plain in the exe,
+// relative to its module elsewhere.
 void describe(uintptr_t a, char* out, size_t n) {
-    if (inSelf(a)) std::snprintf(out, n, "BmxSplitscreen.asi+0x%X", static_cast<unsigned>(a - g_selfBegin));
-    else std::snprintf(out, n, "0x%08X", static_cast<unsigned>(a));
+    if (inSelf(a)) {
+        std::snprintf(out, n, "BmxSplitscreen.asi+0x%X", static_cast<unsigned>(a - g_selfBegin));
+        return;
+    }
+    HMODULE module = nullptr;
+    char path[MAX_PATH] = "";
+    if (!inExe(a) &&
+        GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           reinterpret_cast<LPCSTR>(a), &module) &&
+        GetModuleFileNameA(module, path, sizeof path)) {
+        const char* name = path;
+        for (const char* p = path; *p; ++p)
+            if (*p == '\\' || *p == '/') name = p + 1;
+        std::snprintf(out, n, "%s+0x%X", name, static_cast<unsigned>(a - reinterpret_cast<uintptr_t>(module)));
+        return;
+    }
+    std::snprintf(out, n, "0x%08X", static_cast<unsigned>(a));
 }
 
-// Logs the first fatal exception raised in the exe or the mod and lets the
-// game's own handling go on.
+// Logs the first fatal exception raised in the exe or the mod, and the first
+// raised elsewhere (another module may handle its own), and lets the game's
+// own handling go on.
 LONG CALLBACK handler(EXCEPTION_POINTERS* e) {
     const DWORD code = e->ExceptionRecord->ExceptionCode;
     const bool fatal = code == EXCEPTION_ACCESS_VIOLATION || code == EXCEPTION_ILLEGAL_INSTRUCTION ||
                        code == EXCEPTION_PRIV_INSTRUCTION || code == EXCEPTION_INT_DIVIDE_BY_ZERO ||
                        code == EXCEPTION_STACK_OVERFLOW;
     const uintptr_t at = reinterpret_cast<uintptr_t>(e->ExceptionRecord->ExceptionAddress);
-    if (!fatal || !(inExe(at) || inSelf(at))) return EXCEPTION_CONTINUE_SEARCH;
-    if (InterlockedExchange(&g_reported, 1) != 0) return EXCEPTION_CONTINUE_SEARCH;
+    if (!fatal) return EXCEPTION_CONTINUE_SEARCH;
+    const bool ours = inExe(at) || inSelf(at);
+    if (InterlockedExchange(ours ? &g_reported : &g_reportedOther, 1) != 0) return EXCEPTION_CONTINUE_SEARCH;
+    const char* what = ours ? "CRASH" : "exception (it may be handled)";
 
     char where[64];
     describe(at, where, sizeof where);
     const CONTEXT* c = e->ContextRecord;
     if (code == EXCEPTION_ACCESS_VIOLATION && e->ExceptionRecord->NumberParameters >= 2) {
-        BMX_LOG_ERROR("CRASH at %s: %s address 0x%08X", where,
+        BMX_LOG_ERROR("%s at %s: %s address 0x%08X", what, where,
                       e->ExceptionRecord->ExceptionInformation[0] ? "writing" : "reading",
                       static_cast<unsigned>(e->ExceptionRecord->ExceptionInformation[1]));
     } else {
-        BMX_LOG_ERROR("CRASH at %s: exception 0x%08X", where, static_cast<unsigned>(code));
+        BMX_LOG_ERROR("%s at %s: exception 0x%08X", what, where, static_cast<unsigned>(code));
     }
 #if defined(_M_IX86) || defined(__i386__)
     BMX_LOG_ERROR("  eax=%08lX ebx=%08lX ecx=%08lX edx=%08lX esi=%08lX edi=%08lX ebp=%08lX esp=%08lX",

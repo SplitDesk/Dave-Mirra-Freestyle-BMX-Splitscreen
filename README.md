@@ -8,10 +8,10 @@ Dave Mirra Freestyle BMX.
 
 ## Features
 
-- Split screen for up to 8 players.
 - Gamepads through SDL3: PlayStation, Xbox, Nintendo Switch and more.
 - ProQuest (co-op), Session (with a winner) and Freeride.
 - Gamepad buttons can be changed in OPTIONS controls.
+- Riders can crash into each other (can be turned off in OPTIONS).
 
 ## Requirements
 
@@ -22,7 +22,7 @@ off on any other version.
 
 1. Download the Win32 [winmm.dll](https://github.com/ThirteenAG/Ultimate-ASI-Loader/releases/download/Win32-latest/winmm-Win32.zip)
    from [Ultimate ASI Loader](https://github.com/ThirteenAG/Ultimate-ASI-Loader).
-2. Download the [splitscreen mod](https://github.com/SplitDesk/Dave-Mirra-Freestyle-BMX-Splitscreen/releases/tag/v1.0).
+2. Download [BmxSplitscreen](https://github.com/SplitDesk/Dave-Mirra-Freestyle-BMX-Splitscreen/releases).
 3. Optional, recommended: download the
    [Widescreen Fix](https://github.com/alphayellow1/AlphaYellowWidescreenFixes/releases?q=dave&expanded=true).
 4. Extract everything into the game folder, next to `NgBMX.exe`.
@@ -37,6 +37,7 @@ off on any other version.
 ## Limitations
 - Progress is saved to player 1's rider only. In ProQuest, every player's completed challenges count toward it.
 - Replays only work for player 1's run.
+- Low frame rate with many players, as the game draws every view on one CPU core (Performance mode in OPTIONS helps).
 
 ## Credits
 

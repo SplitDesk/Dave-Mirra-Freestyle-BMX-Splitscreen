@@ -32,24 +32,59 @@ inline constexpr uint32_t  kPlayerDefSize     = 0x10;
 // uint8 game state: 0 riding, 1 paused or in-game screen, 2/3 replay,
 // 4 attract demo, 255 front end.
 inline constexpr uintptr_t kGameState         = 0x00551A30;
+// float 43: a rider's pedalling top speed is this times his rider::kSpeedStat.
+inline constexpr uintptr_t kPedalTopSpeed     = 0x0055886C;
+inline constexpr uintptr_t kWheelRaySide      = 0x00557844;  // float 40, see fn::RiderGroundPost
+
+// An actor's uint32 flags; bit kActorVisible is its visibility (fn::ActorShow,
+// fn::ActorHide).
+inline constexpr uint32_t  kActorFlags        = 0x04;
+inline constexpr uint32_t  kActorVisible      = 0x1;
 
 // Offsets into RiderState.
 namespace rider {
 inline constexpr uint32_t kButtonsHeld  = 0x00C;  // controller +0x10, copied each frame
 inline constexpr uint32_t kFlags        = 0x038;  // bit 0: the rider is active (updated each frame)
+inline constexpr uint32_t kImpactWait   = 0x04D;  // uint8 frames before the next impact sound, counted down each frame
 inline constexpr uint32_t kTrickName    = 0x04E;  // uint8 trick shown by HUD element 8
-inline constexpr uint32_t kTrickName2   = 0x04F;  // uint8 trick shown by HUD element 7 in sub-state 6
+inline constexpr uint32_t kTrickName2   = 0x04F;  // uint8 trick shown by HUD element 7 in sub-state 6 (the bail)
 inline constexpr uint32_t kRunScore     = 0x05C;  // int32 points banked this run
 // int32 session total: SessionStart (0x40A8C0) zeroes it and the run end
 // (0x40B2D4) adds kRunScore of the turn rider.
 inline constexpr uint32_t kSessionScore = 0x060;
 inline constexpr uint32_t kComboValue   = 0x064;  // int32 current combo, added to kRunScore when banked
-inline constexpr uint32_t kState        = 0x3DC;  // uint8 index into the state handler tables
+// uint8 physics mode, an index into the mode handler tables (kModeBail and
+// kModeReset below); RiderSetMode changes it.
+inline constexpr uint32_t kState        = 0x3DC;
 inline constexpr uint32_t kMatrix       = 0x3E0;  // orientation matrix; position float[3] at +0x420
-// actor* of the bike and of the body; actor +4 bit 0 is visibility
-// (0x475A30 shows, 0x475A60 hides).
+inline constexpr uint32_t kPosition     = 0x420;  // float[3]
+// float[3] added to kPosition where the game tests a rider against moving
+// objects (0x42E2F0).
+inline constexpr uint32_t kTestOffset   = 0x430;
+inline constexpr uint32_t kVelocity     = 0x448;  // float[3] added to kPosition each frame
+// float speed stat: pedalling pushes the bike (+0xC60) while the speed (the
+// length of kVelocity, kept at +0x484) is below kPedalTopSpeed times it
+// (0x433D10, 0x4340A0).
+inline constexpr uint32_t kSpeedStat    = 0x6DC;
+// actor* of the bike and of the body (kActorFlags).
 inline constexpr uint32_t kBikeActor    = 0xB94;
+inline constexpr uint32_t kBody         = 0xB98;  // dynamics object of the body, which falls while the rider bails
+// float[4][4] bike orientation and float[3] centre; a wheel's position is
+// its local offset transformed by the matrix (TransformPoint), plus the centre.
+inline constexpr uint32_t kBikeCentre   = 0xC10;
+inline constexpr uint32_t kBikeMatrix   = 0xC20;
+// The wheels, kWheelStride bytes each, starting with the local offset float[3].
+inline constexpr uint32_t kWheels       = 0xC88;
+inline constexpr uint32_t kWheelStride  = 0x84;
+inline constexpr int      kWheelCount   = 2;
 inline constexpr uint32_t kRiderActor   = 0xD90;
+// In the kBody object: body part k's velocity, float[3], at
+// kBodyPartVelocity + k * kBodyPartStride.
+inline constexpr uint32_t kBodyPartVelocity = 0x88;
+inline constexpr uint32_t kBodyPartStride   = 0xB4;
+// kState values.
+inline constexpr uint8_t  kModeBail     = 2;     // the body falls; the state stack goes to its bail state (6)
+inline constexpr uint8_t  kModeReset    = 0xFF;  // set by RiderReset until the next mode
 }  // namespace rider
 
 // ------------------------------------------------------- in-game screens --
@@ -120,6 +155,16 @@ inline constexpr uintptr_t kMenuController    = 0x0056D298;
 inline constexpr uintptr_t kOverlayPendingA   = 0x005D24FC;  // int: OverlayDrawA draws on the next camera
 inline constexpr uintptr_t kOverlayPendingB   = 0x005D2504;  // int: OverlayDrawB draws on the next camera
 inline constexpr uintptr_t kOverlayPrimCursor = 0x0068EBE0;  // next free per-frame primitive (0xFFFFFFFF none)
+// The per-frame primitives (texts made each frame), from kOverlayPrimBuffer,
+// where OverlayBeginA/B rewind kOverlayPrimCursor; nothing checks the end.
+inline constexpr uintptr_t kOverlayPrimBuffer = 0x00678560;
+inline constexpr uint32_t  kOverlayPrimBufferSize = 0x13E70;
+// The overlay's per-frame lists of object handles (u16), kOverlayListEntries
+// each: objects freed, emptied at the bank flip (0x457B00), and objects
+// changed. A push past the end calls the error handler (0x47ED10) but stores.
+inline constexpr uintptr_t kOverlayFreeList   = 0x005965A4;
+inline constexpr uintptr_t kOverlayDirtyList  = 0x005A1E38;
+inline constexpr uint32_t  kOverlayListEntries = 0x23C;
 inline constexpr uintptr_t kHudElements       = 0x00556F00;  // 17 x {flags, show, update, enable, set, get}
 inline constexpr uintptr_t kHudFont           = 0x0056BF38;  // the HUD's font, also the score's
 
@@ -238,6 +283,17 @@ inline constexpr uintptr_t kOrderingTable     = 0x0055C698;
 inline constexpr int       kOrderingTableEntries = 0x400;
 inline constexpr uintptr_t kGuiOtCursor       = 0x0068C3D0;  // uint32* entry of the next GUI primitive
 inline constexpr uintptr_t kScreenSize        = 0x0055C690;  // float width, height in pixels (GUI clip areas)
+// The GUI's memory (fn::kGuiHeapSize): its first free block {+4 next, +8
+// size}, -1 when none; and the end of the static arena it is taken from, 0
+// until the arena is set up.
+inline constexpr uintptr_t kGuiHeapFree       = 0x005F8F38;
+inline constexpr uintptr_t kStaticArenaEnd    = 0x00670898;
+// The actors (a rider has two, bike and body): int kActorCount of
+// kActorSize bytes each at kActorPool, taken from the static arena at
+// start-up (0x472630); 0 until then.
+inline constexpr uintptr_t kActorCount        = 0x0055F360;
+inline constexpr uintptr_t kActorPool         = 0x00641E1C;
+inline constexpr uint32_t  kActorSize         = 0x278;
 
 // ------------------------------------------------------- cameras (camera.c) --
 // One camera controller per rider; the active one drives the game camera.
@@ -289,7 +345,7 @@ inline constexpr uintptr_t SndSrcCreate         = 0x0047E520;  // (sample*, pos*
 inline constexpr uintptr_t SndSrcDestroy        = 0x0047E650;  // (handle)
 inline constexpr uintptr_t SndSrcSetVolume      = 0x0047E910;  // (handle, volume)
 inline constexpr uintptr_t ZobjCameraMatrix     = 0x00482310;  // (zobjCamera, 0) -> its cached view matrix
-inline constexpr uintptr_t TransformPoint       = 0x00481640;  // (out*, matrix*, in*)
+inline constexpr uintptr_t TransformPoint       = 0x00481640;  // (out*, matrix*, in*) out = matrix x in + its translation
 // (event, a, b, c, d): announcer, sounds and HUD pop-ups; event 2000 is the
 // menu move sound, 0x7D4 the refused sound.
 inline constexpr uintptr_t GameEvent            = 0x0044E300;
@@ -388,8 +444,30 @@ inline constexpr uintptr_t OverlayInit          = 0x004578F0;  // links each poo
 // sets its pending flag; B does the same for the GUI.
 inline constexpr uintptr_t OverlayBeginA        = 0x00463820;
 inline constexpr uintptr_t OverlayBeginB        = 0x00463AB0;
+// (table*, count) links each ordering-table entry to the one below and ends
+// the chain at entry 0; it counts in 16 bits (si), so up to 0x8000 entries.
+inline constexpr uintptr_t OtClear              = 0x0045FF60;
+// The overlay lists and primitive buffer in code (addr::kOverlayFreeList,
+// kOverlayDirtyList, kOverlayPrimBuffer): the operand addresses holding each
+// list's address, its address minus 2 (the last entry by count), its size,
+// and the buffer's address.
+inline constexpr uintptr_t kFreeListRefs[] = {0x00458275, 0x00458304, 0x00458518, 0x00458630, 0x00458715,
+                                              0x00458A01, 0x00458BB9, 0x00458D98, 0x00459070, 0x004593BB,
+                                              0x0045975F, 0x00459AD0, 0x00459CB2};
+inline constexpr uintptr_t kFreeListLastRefs[] = {0x00457CD9};
+inline constexpr uintptr_t kDirtyListRefs[] = {0x00458298, 0x00458325, 0x004584D4, 0x0045867A, 0x0045875F,
+                                               0x00458A3D, 0x00458C01, 0x00458DE1, 0x004590AE, 0x00459375,
+                                               0x0045979B, 0x00459A92, 0x00459D0B};
+inline constexpr uintptr_t kDirtyListLastRefs[] = {0x00457D86};
+inline constexpr uintptr_t kOverlayListSizeRefs[] = {0x00457CA2, 0x00457D55, 0x004584DA, 0x00458680, 0x00458765,
+                                                     0x00458A43, 0x00458C07, 0x00458DE7, 0x004590B4, 0x0045937B,
+                                                     0x004597A1, 0x00459A98, 0x00459D11};
+inline constexpr uintptr_t kOverlayPrimBufferRefs[] = {0x00463843, 0x00463ADF};
 inline constexpr uintptr_t GuiPrimSetup         = 0x004639F0;  // () sets kGuiPrimBase to the static buffer if 0
 inline constexpr uintptr_t OverlayDrawPrim      = 0x00462050;  // (prim) one primitive -> 2-D quads and lines
+// (entry*) draws an ordering table: follows the links from `entry` down to
+// the end (link 0x0FFFFFFF), drawing each primitive with a length.
+inline constexpr uintptr_t OverlayDrawTable     = 0x00462350;
 // Per-camera draw callbacks: each draws the ordering table if its pending
 // flag is set, then clears it, so the HUD shows in the first camera drawn.
 inline constexpr uintptr_t OverlayDrawA         = 0x00463860;
@@ -434,6 +512,25 @@ inline constexpr uintptr_t RiderReset           = 0x00431AA0;  // (slot, show) p
 inline constexpr uintptr_t RiderRunSetup        = 0x0040CF50;  // [inferred] (slot) per rider in the run-start reset
 inline constexpr uintptr_t RidersReadInput      = 0x00430E70;  // controller -> RiderState, per rider
 inline constexpr uintptr_t RidersApplyInput     = 0x00431000;  // RiderState input -> rider controls, per active rider
+// (rider*, mode) -> mode: runs the old mode's exit handler (0x557898) and the
+// new mode's entry handler (0x5578B4), which returns the mode set.
+inline constexpr uintptr_t RiderSetMode         = 0x00420CB0;
+// (rider*, part, float speed) adds the speed, scaled by the part's weight
+// (0x558914), to rider +0x58.
+inline constexpr uintptr_t RiderAddImpact       = 0x00431E10;
+// (rider*) ground physics after the move (mode 0's post handler, 0x557908):
+// the leading wheel's two rays, from its centre to its edge 40 units either
+// side (kWheelRaySide) plus its velocity, are tested against the world at
+// kWheelWallTest; a wall hit bails the rider when the impact reaches 60 times
+// his +0x6E0 stat, and otherwise bounces him back or turns him along it.
+inline constexpr uintptr_t RiderGroundPost      = 0x00425940;
+inline constexpr uintptr_t kWheelWallTest       = 0x00425B09;  // return address of that test's CollideLine
+// (from*, to*, hit*) -> whether the segment hits the world; fills the
+// 0xD8-byte hit (NgIFzcollide.c).
+inline constexpr uintptr_t CollideLine          = 0x00469B00;
+// [inferred] () starts the shake sequence at 0x554724 (0x45FDC0), as hard
+// impacts do.
+inline constexpr uintptr_t ImpactShake          = 0x00408A80;
 
 // ------------------------------------------------- shadow (zrwShadow.c) --
 // One shadow descriptor, overwritten by each rider created and drawn by one
@@ -456,6 +553,10 @@ inline constexpr int       kRwStateZWrite       = 6;           // D3DRENDERSTATE
 // Per frame: poses the active camera rider's bike and body only.
 inline constexpr uintptr_t PoseActiveRider      = 0x004659E0;
 inline constexpr uintptr_t PoseActor            = 0x004654B0;  // (actor) skeleton from the animation, then model transform
+// (actor) set or clear the actor's visibility bit and enable or disable its
+// model object (0x487600).
+inline constexpr uintptr_t ActorShow            = 0x00475A30;
+inline constexpr uintptr_t ActorHide            = 0x00475A60;
 inline constexpr uintptr_t ZobjCameraCreate     = 0x004821C0;  // () -> zobjCamera*, its zrwCamera at +0x2C
 inline constexpr uintptr_t ZobjCameraUpdate     = 0x004820C0;  // (zobj) pushes the object's transform into its zrwCamera
 inline constexpr uintptr_t ZobjDestroy          = 0x00487400;  // (zobj) virtual destroy and free
@@ -484,6 +585,15 @@ inline constexpr uintptr_t GuiSetClip           = 0x00477DA0;  // (x0, y0, x1, y
 inline constexpr uintptr_t GuiAssetAlloc        = 0x0047B830;  // () -> a free asset handle linked into the list, or 0
 inline constexpr uintptr_t GuiFreeImage         = 0x00479CD0;  // (image) frees an image the screen made
 inline constexpr uintptr_t ZPrimUnloadGroup     = 0x0047B5C0;  // (slot) frees the group and each of its assets
+// The GUI's memory (zmemDMM): a heap of kGuiHeapSize bytes taken from the
+// static arena (kStaticArenaSize, set up at start-up by 0x45B270) each time
+// the GUI starts (0x437640). It runs out with "DMM failed to allocate".
+inline constexpr uintptr_t kStaticArenaSize     = 0x0045B3B8;  // imm32 of push 0x400000
+inline constexpr uintptr_t kGuiHeapSize         = 0x004376B4;  // imm32 of push 0x300000
+// (why, file, line, function) the game's assert: a message box ("RenderWare
+// Application Error"); Yes breaks into a debugger, Cancel quits. Called
+// through 0x56147C by 0x47ED10.
+inline constexpr uintptr_t GameAssert           = 0x00489CF0;
 inline constexpr uintptr_t MemAlloc             = 0x0046B030;  // (size) -> handle
 inline constexpr uintptr_t MemFree              = 0x0046B140;  // (handle)
 inline constexpr uintptr_t MemLock              = 0x0046B470;  // (handle) -> pointer

@@ -89,7 +89,7 @@ if defined BMXSS_GAME_DIR copy /Y "$(TargetPath)" "%BMXSS_GAME_DIR%\" &amp;&amp;
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
       <AdditionalDependencies>detours.lib;psapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(ProjectDir)lib\Detours\lib.X86;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
@@ -126,6 +126,7 @@ if defined BMXSS_GAME_DIR copy /Y "$(TargetPath)" "%BMXSS_GAME_DIR%\" &amp;&amp;
     <ClCompile Include="src\mod\dllmain.cpp" />
     <ClCompile Include="src\mod\extra_riders.cpp" />
     <ClCompile Include="src\mod\frontend.cpp" />
+    <ClCompile Include="src\mod\game_heap.cpp" />
     <ClCompile Include="src\mod\gui_buffers.cpp" />
     <ClCompile Include="src\mod\hud.cpp" />
     <ClCompile Include="src\mod\input.cpp" />
@@ -134,10 +135,13 @@ if defined BMXSS_GAME_DIR copy /Y "$(TargetPath)" "%BMXSS_GAME_DIR%\" &amp;&amp;
     <ClCompile Include="src\mod\perf.cpp" />
     <ClCompile Include="src\mod\players_score.cpp" />
     <ClCompile Include="src\mod\render_state.cpp" />
+    <ClCompile Include="src\mod\rider_collision.cpp" />
     <ClCompile Include="src\mod\rider_select.cpp" />
     <ClCompile Include="src\mod\riders.cpp" />
     <ClCompile Include="src\mod\scoring.cpp" />
     <ClCompile Include="src\mod\splitscreen.cpp" />
+    <ClCompile Include="src\mod\test_players.cpp" />
+    <ClCompile Include="src\mod\view_culling.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\common\config.hpp" />
@@ -166,6 +170,7 @@ if defined BMXSS_GAME_DIR copy /Y "$(TargetPath)" "%BMXSS_GAME_DIR%\" &amp;&amp;
     <ClInclude Include="src\mod\crash_log.hpp" />
     <ClInclude Include="src\mod\extra_riders.hpp" />
     <ClInclude Include="src\mod\frontend.hpp" />
+    <ClInclude Include="src\mod\game_heap.hpp" />
     <ClInclude Include="src\mod\gui_buffers.hpp" />
     <ClInclude Include="src\mod\hud.hpp" />
     <ClInclude Include="src\mod\input.hpp" />
@@ -174,10 +179,16 @@ if defined BMXSS_GAME_DIR copy /Y "$(TargetPath)" "%BMXSS_GAME_DIR%\" &amp;&amp;
     <ClInclude Include="src\mod\perf.hpp" />
     <ClInclude Include="src\mod\players_score.hpp" />
     <ClInclude Include="src\mod\render_state.hpp" />
+    <ClInclude Include="src\mod\rider_collision.hpp" />
     <ClInclude Include="src\mod\rider_select.hpp" />
     <ClInclude Include="src\mod\riders.hpp" />
     <ClInclude Include="src\mod\scoring.hpp" />
     <ClInclude Include="src\mod\splitscreen.hpp" />
+    <ClInclude Include="src\mod\test_players.hpp" />
+    <ClInclude Include="src\mod\view_culling.hpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="src\BmxSplitscreen.rc" />
   </ItemGroup>
   <ItemGroup>
     <None Include="config\BmxSplitscreen.ini" />

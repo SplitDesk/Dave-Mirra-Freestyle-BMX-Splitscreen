@@ -7,7 +7,8 @@
 
 namespace bmx::split {
 
-// Hooks the frame render, the camera update and the camera destruction.
+// Hooks the frame render, the camera update, the start of each camera's draw
+// and the camera destruction.
 bool install(const Config& cfg);
 
 // A view's rectangle on the screen, in pixels.
@@ -27,6 +28,9 @@ int viewCount();
 // Returns the view an engine camera draws (0 player 1, 1 player 2 and so
 // on), or -1 when it is not a split camera.
 int viewOf(const void* zrwCamera);
+
+// Returns the view being drawn, or -1 when none (or not split).
+int currentView();
 
 // Returns a view's rectangle.
 ViewRect viewRect(int view);

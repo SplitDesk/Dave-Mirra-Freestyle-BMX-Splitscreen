@@ -13,8 +13,13 @@
 #include "mod/hud.hpp"
 #include "mod/input.hpp"
 #include "mod/pause_options.hpp"
+#include "mod/perf.hpp"
 #include "mod/players_score.hpp"
 #include "mod/render_state.hpp"
+#include "mod/rider_collision.hpp"
+#include "mod/splitscreen.hpp"
+#include "mod/test_players.hpp"
+#include "mod/view_culling.hpp"
 
 namespace bmx::riders {
 namespace {
@@ -126,17 +131,20 @@ int __cdecl onShadowCompute(void* desc) {
     return g_shadowCompute.original(desc);
 }
 
-// ShadowGridDraw: computes and draws every rider's shadow. The game draws
+// ShadowGridDraw: computes and draws every rider's shadow (in performance mode,
+// those of the riders the view shows). The game draws
 // its shadow without a depth test, so a shadow in front of a rider, seen from
 // his camera, would be drawn across his body; these are depth-tested but,
 // like the game's, write no depth.
 int __cdecl onShadowDraw() {
     if (!everyShadow()) return g_shadowDraw.original();
+    perf::Timer timer(perf::Phase::Shadows);
     setShadowDepthTest(true);
     render::beginNoDepthWrite();
     const int riders = 2 + extras::count();
+    const int view = split::currentView();
     for (int p = 0; p < riders && p < static_cast<int>(g_shadow.size()); ++p) {
-        if (!g_shadow[p].valid) continue;
+        if (!g_shadow[p].valid || !viewculling::drawn(p, view)) continue;
         *reinterpret_cast<void***>(g_shadow[p].bytes + 4) = g_shadow[p].models;
         g_shadowComputeAllowed = true;
         g_shadowCompute.original(g_shadow[p].bytes);
@@ -260,6 +268,8 @@ int __cdecl onGameStart() {
             g.levelStartTick = g.lastReportTick = GetTickCount();
             startSlot2();
             extras::forEach(startSlot2);
+            ridercollision::restart();
+            testplayers::levelStart();
             pauseoptions::shareWithPlayers();
             logRiders("after start");
             logModels();
@@ -291,6 +301,7 @@ void __cdecl onRiderRestart(int slot, int show) {
     if (slot == 0 && secondActive()) {
         g_riderRestart.original(1, show);
         extras::forEach([&] { g_riderRestart.original(1, show); });
+        ridercollision::restart();
         if (g.restarts++ < 8) logRiders(show ? "restart (show)" : "restart (hide)");
     }
 }
@@ -406,10 +417,12 @@ void __cdecl onPoseActiveRider() {
 // RidersUpdate from the main loop reads the controllers, turns them into
 // rider controls, then runs physics and animation. It runs again for each
 // extra rider in slot 2, with rider 1 left out: the last two steps handle
-// only riders whose active bit is set.
+// only riders whose active bit is set. Then, with every rider updated, the
+// riders are tested against each other.
 void __cdecl onRidersUpdate() {
+    perf::Timer timer(perf::Phase::Riders);
     g_ridersUpdate.original();
-    if (!secondActive() || extras::count() == 0 || BMX_RETURN_ADDRESS() != fn::kRidersUpdateFromMain) return;
+    if (!secondActive() || BMX_RETURN_ADDRESS() != fn::kRidersUpdateFromMain) return;
     uint32_t& rider1Flags = field<uint32_t>(riderState(0), addr::rider::kFlags);
     const uint32_t saved = rider1Flags;
     for (int k = 0; k < extras::count(); ++k)
@@ -421,6 +434,7 @@ void __cdecl onRidersUpdate() {
             g_ridersUpdate.original();
             rider1Flags = saved;
         });
+    ridercollision::update();
 }
 
 }  // namespace

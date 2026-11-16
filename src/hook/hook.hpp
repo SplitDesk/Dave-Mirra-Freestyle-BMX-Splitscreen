@@ -6,6 +6,7 @@
 // original() calls the game function itself.
 
 #include <cstdint>
+#include <span>
 
 // The return address of the current function. Inside a replacement it is the
 // address in the game code that called the hooked function.
@@ -27,6 +28,20 @@ bool enableAll();
 
 // Detaches every attached hook.
 void shutdown();
+
+// A 32-bit value in the game's code: its address, the game's value and the
+// mod's.
+struct Patch32 {
+    uintptr_t at;
+    uint32_t game, ours;
+};
+
+// Returns whether every patch's address holds the game's value; logs the
+// first that does not.
+bool matches(std::span<const Patch32> patches, const char* what);
+
+// Writes the mod's values; returns false when the code cannot be written.
+bool apply(std::span<const Patch32> patches);
 
 // One hooked game function of type Fn.
 template <typename Fn>

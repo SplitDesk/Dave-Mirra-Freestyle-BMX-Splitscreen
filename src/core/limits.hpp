@@ -5,6 +5,6 @@ namespace bmx {
 
 // The most players in one game: rider select slots, riders and views. Code
 // treats players as a list and never assumes a fixed count.
-inline constexpr int kMaxPlayers = 8;
+inline constexpr int kMaxPlayers = 64;
 
 }  // namespace bmx

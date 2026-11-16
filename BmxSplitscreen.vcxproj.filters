@@ -93,6 +93,9 @@
     <ClCompile Include="src\mod\frontend.cpp">
       <Filter>mod</Filter>
     </ClCompile>
+    <ClCompile Include="src\mod\game_heap.cpp">
+      <Filter>mod</Filter>
+    </ClCompile>
     <ClCompile Include="src\mod\gui_buffers.cpp">
       <Filter>mod</Filter>
     </ClCompile>
@@ -117,6 +120,9 @@
     <ClCompile Include="src\mod\render_state.cpp">
       <Filter>mod</Filter>
     </ClCompile>
+    <ClCompile Include="src\mod\rider_collision.cpp">
+      <Filter>mod</Filter>
+    </ClCompile>
     <ClCompile Include="src\mod\rider_select.cpp">
       <Filter>mod</Filter>
     </ClCompile>
@@ -127,6 +133,12 @@
       <Filter>mod</Filter>
     </ClCompile>
     <ClCompile Include="src\mod\splitscreen.cpp">
+      <Filter>mod</Filter>
+    </ClCompile>
+    <ClCompile Include="src\mod\test_players.cpp">
+      <Filter>mod</Filter>
+    </ClCompile>
+    <ClCompile Include="src\mod\view_culling.cpp">
       <Filter>mod</Filter>
     </ClCompile>
   </ItemGroup>
@@ -209,6 +221,9 @@
     <ClInclude Include="src\mod\frontend.hpp">
       <Filter>mod</Filter>
     </ClInclude>
+    <ClInclude Include="src\mod\game_heap.hpp">
+      <Filter>mod</Filter>
+    </ClInclude>
     <ClInclude Include="src\mod\gui_buffers.hpp">
       <Filter>mod</Filter>
     </ClInclude>
@@ -233,6 +248,9 @@
     <ClInclude Include="src\mod\render_state.hpp">
       <Filter>mod</Filter>
     </ClInclude>
+    <ClInclude Include="src\mod\rider_collision.hpp">
+      <Filter>mod</Filter>
+    </ClInclude>
     <ClInclude Include="src\mod\rider_select.hpp">
       <Filter>mod</Filter>
     </ClInclude>
@@ -245,6 +263,15 @@
     <ClInclude Include="src\mod\splitscreen.hpp">
       <Filter>mod</Filter>
     </ClInclude>
+    <ClInclude Include="src\mod\test_players.hpp">
+      <Filter>mod</Filter>
+    </ClInclude>
+    <ClInclude Include="src\mod\view_culling.hpp">
+      <Filter>mod</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="src\BmxSplitscreen.rc" />
   </ItemGroup>
   <ItemGroup>
     <None Include="config\BmxSplitscreen.ini">

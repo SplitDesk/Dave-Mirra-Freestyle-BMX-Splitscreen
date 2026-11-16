@@ -55,6 +55,27 @@ bool enableAll() {
     return true;
 }
 
+bool matches(std::span<const Patch32> patches, const char* what) {
+    for (const Patch32& p : patches)
+        if (*reinterpret_cast<const uint32_t*>(p.at) != p.game) {
+            BMX_LOG_ERROR("%s: unexpected code at 0x%08X", what, static_cast<unsigned>(p.at));
+            return false;
+        }
+    return true;
+}
+
+bool apply(std::span<const Patch32> patches) {
+    for (const Patch32& p : patches) {
+        auto* value = reinterpret_cast<uint32_t*>(p.at);
+        DWORD old = 0;
+        if (!VirtualProtect(value, sizeof *value, PAGE_EXECUTE_READWRITE, &old)) return false;
+        *value = p.ours;
+        VirtualProtect(value, sizeof *value, old, &old);
+        FlushInstructionCache(GetCurrentProcess(), value, sizeof *value);
+    }
+    return true;
+}
+
 void shutdown() {
     if (!g_attached) return;
     DetourTransactionBegin();

@@ -17,16 +17,20 @@
 #include "mod/controller_options.hpp"
 #include "mod/crash_log.hpp"
 #include "mod/frontend.hpp"
+#include "mod/game_heap.hpp"
 #include "mod/gui_buffers.hpp"
 #include "mod/hud.hpp"
 #include "mod/input.hpp"
 #include "mod/pause_options.hpp"
 #include "mod/players_score.hpp"
 #include "mod/render_state.hpp"
+#include "mod/rider_collision.hpp"
 #include "mod/rider_select.hpp"
 #include "mod/riders.hpp"
 #include "mod/scoring.hpp"
 #include "mod/splitscreen.hpp"
+#include "mod/test_players.hpp"
+#include "mod/view_culling.hpp"
 
 namespace {
 
@@ -71,19 +75,17 @@ void startup() {
     BMX_LOG_INFO("Game build: %s (riders at 0x%08X, %d slots in exe)", build->name,
                  static_cast<unsigned>(bmx::game::addr::kRiderArray), bmx::game::addr::kRiderSlotsInExe);
 
-    if (!g_config.enabled) {
-        BMX_LOG_INFO("Enabled=0 in ini, not installing hooks");
-        return;
-    }
-
     if (g_config.widescreenFixFov != 1.0f)
         BMX_LOG_INFO("Split views use the widescreen fix's FOVFactor %.2f", g_config.widescreenFixFov);
     bmx::input::setLayout(g_config.padLayout);
-    if (!bmx::split::install(g_config) || !bmx::riders::install() || !bmx::input::install() ||
-        !bmx::scoring::install() || !bmx::playersscore::install() || !bmx::hud::install() ||
+    bmx::ridercollision::setEnabled(g_config.collision);
+    bmx::testplayers::setEnabled(g_config.debug);
+    bmx::viewculling::setEnabled(g_config.performanceMode);
+    if (!bmx::gameheap::install() || !bmx::split::install(g_config) || !bmx::riders::install() ||
+        !bmx::input::install() || !bmx::scoring::install() || !bmx::playersscore::install() || !bmx::hud::install() ||
         !bmx::frontend::install() || !bmx::riderselect::install() || !bmx::audio::install() ||
         !bmx::buttonicons::install(g_config) || !bmx::render::install() || !bmx::guibuffers::install() ||
-        !bmx::pauseoptions::install(siblingPath(L"BmxSplitscreen.ini")) ||
+        !bmx::ridercollision::install() || !bmx::pauseoptions::install(siblingPath(L"BmxSplitscreen.ini")) ||
         !bmx::controlleroptions::install(siblingPath(L"BmxSplitscreen.ini"))) {
         BMX_LOG_ERROR("Hook setup failed, mod disabled");
         return;

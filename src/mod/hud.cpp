@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <span>
 #include <vector>
 
 #include "common/log.hpp"
@@ -15,7 +16,9 @@
 #include "hook/hook.hpp"
 #include "mod/button_icons.hpp"
 #include "mod/extra_riders.hpp"
+#include "mod/gui_buffers.hpp"
 #include "mod/low_memory.hpp"
+#include "mod/perf.hpp"
 #include "mod/render_state.hpp"
 #include "mod/riders.hpp"
 #include "mod/scoring.hpp"
@@ -43,7 +46,10 @@ constexpr size_t kMenuTextsSize = 0x30;  // addr::kMenuTexts
 // The u16 object handles the HUD elements keep, each reset to 0xFFFF by the
 // HUD code.
 constexpr uintptr_t kHandleFields[] = {kScoreText, kHandleA, kHandleB, kFadeBox, kHandleC, kHandleD, kTimerText};
-constexpr uint32_t kMaxPoolEntries = 128 * kMaxPlayers;  // the biggest pool, enlarged
+// An object handle keeps its pool entry in bits 0..11 (0x4580E0), so a pool
+// has at most kHandleEntries entries.
+constexpr uint32_t kHandleEntries = 0x1000;
+constexpr uint32_t kMaxPoolEntries = std::min<uint32_t>(128 * kMaxPlayers, kHandleEntries);  // the biggest pool
 
 // The maker of an overlay object: the player whose HUD was in (0 player 1),
 // or kShared for objects shown in every view.
@@ -57,8 +63,7 @@ struct Pool {
 };
 
 struct State {
-    const void* currentCamera = nullptr;
-    std::array<uint8_t, 2> drawnViews{};  // per draw callback: bits of the views that drew this frame's table
+    std::array<uint64_t, 2> drawnViews{};  // per draw callback: bits of the views that drew this frame's table
 
     // While inside an overlay draw: the view drawn, whether its 2-D draws are
     // fitted to the view and whether primitives are filtered by owner.
@@ -87,7 +92,7 @@ struct State {
     std::array<int, 8> stack{};  // the HUDs begin() returns to
     int depth = 0;
     uint8_t turnOfPlayer1 = 0;
-    uint32_t announced = 0;  // bits of the players whose HUD was logged
+    uint64_t announced = 0;  // bits of the players whose HUD was logged
 
     // Immediate primitives (text made each frame: trick names, combo points,
     // meter labels) come from a per-frame buffer rather than the pools; these
@@ -96,7 +101,7 @@ struct State {
         uintptr_t begin, end;
         Owner owner;
     };
-    std::array<Range, 128> ranges{};
+    std::array<Range, 16 * kMaxPlayers> ranges{};
     size_t rangeCount = 0;
     uintptr_t rangeStart = 0;
 };
@@ -106,7 +111,6 @@ State g;
 uint32_t g_routed = 0;
 
 using BoolFn = void(__cdecl*)(int on);
-using BeginUpdateFn = int(__cdecl*)(const void* zrwCamera);
 using DrawPrimFn = void(__cdecl*)(void* prim);
 using Zgl2DFn = void(__cdecl*)(uint32_t flags, uint32_t* items, int count, uint32_t extra);
 using PoolFn = void(__cdecl*)(int type, int size, uint32_t bank, uint8_t** base, uint32_t* count, uint32_t* kind);
@@ -115,10 +119,11 @@ using EnableFn = void(__cdecl*)(int element, uint32_t on);
 using HandleFn = uint32_t(__cdecl*)(uint32_t handle, uint32_t a, uint32_t b, uint32_t c, uint32_t d);
 using HudSetFn = void(__cdecl*)(int id, void* data);
 
-hook::Hook<BeginUpdateFn> g_beginUpdate;
 hook::Hook<IntFn> g_overlayDrawA;
 hook::Hook<IntFn> g_overlayDrawB;
 hook::Hook<DrawPrimFn> g_drawPrim;
+hook::Hook<void(__cdecl*)(uint32_t* start)> g_drawTable;
+uint32_t* g_firstUsed = nullptr;  // the table's highest entry in use, once found this frame
 hook::Hook<Zgl2DFn> g_lines;
 hook::Hook<Zgl2DFn> g_tris;
 hook::Hook<Zgl2DFn> g_quads;
@@ -159,8 +164,8 @@ struct BiggerPool {
     }
 };
 BiggerPool g_biggerPools[] = {
-    {0, 0, addr::kBoxPool, 16, 16 * kMaxPlayers},
-    {0, 1, addr::kGlyphPool, 128, 128 * kMaxPlayers},
+    {0, 0, addr::kBoxPool, 16, std::min<int>(16 * kMaxPlayers, kHandleEntries)},
+    {0, 1, addr::kGlyphPool, 128, static_cast<int>(kMaxPoolEntries)},
 };
 
 // Sets the link of a primitive's tag.
@@ -205,6 +210,46 @@ int __cdecl onOverlayInit() {
     const int result = g_overlayInit.original();
     initBiggerPools();
     return result;
+}
+
+// ------------------------------------------------- bigger lists and buffer --
+// The overlay's per-frame lists of freed and changed objects and its buffer
+// of per-frame primitives are sized for one HUD and never checked; each is
+// moved to memory with room for every player's, and the code's addresses and
+// sizes patched. The buffer's primitives are linked by 28-bit links, so it
+// lies in low memory.
+constexpr uint32_t kListEntries = addr::kOverlayListEntries * kMaxPlayers;
+constexpr uint32_t kPrimBufferSize = addr::kOverlayPrimBufferSize * kMaxPlayers;
+std::array<uint16_t, kListEntries> g_freeList{}, g_dirtyList{};
+
+// Moves the lists and the buffer; the game keeps its own when the code is not
+// as expected or there is no low memory.
+bool installBiggerLists() {
+    std::vector<hook::Patch32> patches;
+    auto add = [&](std::span<const uintptr_t> refs, uintptr_t game, uintptr_t ours) {
+        for (uintptr_t at : refs)
+            patches.push_back({at, static_cast<uint32_t>(game), static_cast<uint32_t>(ours)});
+    };
+    const auto freeList = reinterpret_cast<uintptr_t>(g_freeList.data());
+    const auto dirtyList = reinterpret_cast<uintptr_t>(g_dirtyList.data());
+    add(fn::kFreeListRefs, addr::kOverlayFreeList, freeList);
+    add(fn::kFreeListLastRefs, addr::kOverlayFreeList - 2, freeList - 2);
+    add(fn::kDirtyListRefs, addr::kOverlayDirtyList, dirtyList);
+    add(fn::kDirtyListLastRefs, addr::kOverlayDirtyList - 2, dirtyList - 2);
+    add(fn::kOverlayListSizeRefs, addr::kOverlayListEntries, kListEntries);
+    if (!hook::matches(patches, "hud")) {
+        BMX_LOG_WARN("hud: the overlay lists stay the game's (%u entries)", addr::kOverlayListEntries);
+        return true;
+    }
+    uint8_t* buffer = lowmem::alloc(kPrimBufferSize);
+    if (buffer)
+        add(fn::kOverlayPrimBufferRefs, addr::kOverlayPrimBuffer, reinterpret_cast<uintptr_t>(buffer));
+    else
+        BMX_LOG_WARN("hud: no low memory for a bigger primitive buffer, some players' HUDs may be missing");
+    if (!hook::matches(patches, "hud") || !hook::apply(patches)) return false;
+    BMX_LOG_INFO("hud: overlay lists of %u entries, primitive buffer of %u bytes", kListEntries,
+                 buffer ? kPrimBufferSize : addr::kOverlayPrimBufferSize);
+    return true;
 }
 
 // ---------------------------------------------------------------- elements --
@@ -261,19 +306,24 @@ void noteRange(Owner owner, uintptr_t begin, uintptr_t end) {
     if (g.rangeCount < g.ranges.size()) g.ranges[g.rangeCount++] = {begin, end, owner};
 }
 
-// OverlayBeginA/B: the per-frame buffer is rewound, and with it the ranges.
+// OverlayBeginA/B: the per-frame buffer is rewound, and with it the ranges;
+// the table is cleared, so its highest entry in use is found again.
 template <hook::Hook<VoidFn>& H>
 void __cdecl onOverlayBegin() {
     H.original();
     g.rangeCount = 0;
+    g_firstUsed = nullptr;
 }
 
-// The owner of a primitive: by the immediate ranges, else by its pool entry.
+// The owner of a primitive: by the immediate ranges (in buffer order, as the
+// cursor only moves on), else by its pool entry.
 Owner ownerOf(const void* prim) {
     const uint8_t* p = static_cast<const uint8_t*>(prim);
     const auto a = reinterpret_cast<uintptr_t>(prim);
-    for (size_t i = 0; i < g.rangeCount; ++i)
-        if (a >= g.ranges[i].begin && a < g.ranges[i].end) return g.ranges[i].owner;
+    const auto* ranges = g.ranges.data();
+    const auto* after = std::upper_bound(ranges, ranges + g.rangeCount, a,
+                                         [](uintptr_t v, const State::Range& r) { return v < r.begin; });
+    if (after != ranges && a < after[-1].end) return after[-1].owner;
     for (int key = 0; key < 8; ++key) {
         const Pool& pool = g.pools[key];
         for (int bank = 0; bank < 2; ++bank) {
@@ -335,6 +385,29 @@ void __cdecl onDrawPrim(void* prim) {
         if (o != kShared && o != (g.view > 0 ? g.view : 0)) return;
     }
     g_drawPrim.original(prim);
+}
+
+// Returns the highest entry of the cleared table `table` holding something:
+// a cleared entry only links to the one below it.
+uint32_t* highestUsed(uint32_t* table, int entries) {
+    for (int i = entries - 1; i > 0; --i)
+        if (table[i] != (static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&table[i - 1])) & 0x0FFFFFFFu))
+            return &table[i];
+    return table;
+}
+
+// OverlayDrawTable: walked from the table's top, the walk crosses every empty
+// entry, tens of thousands with room for every player's rider select, in
+// every view. It starts instead at the highest entry in use (found once a
+// frame), as the entries above it only link down to it.
+void __cdecl onDrawTable(uint32_t* start) {
+    uint32_t* table = global<uint32_t*>(addr::kOrderingTable);
+    const int entries = guibuffers::capacity();
+    if (table && start == table + entries - 1) {
+        if (!g_firstUsed) g_firstUsed = highestUsed(table, entries);
+        start = g_firstUsed;
+    }
+    g_drawTable.original(start);
 }
 
 // ----------------------------------------------------------- HUD instances --
@@ -414,8 +487,8 @@ void create(int p) {
     uint8_t noTrick = 0xFF;
     HudSet(8, &noTrick);
     end();
-    if (!(g.announced & (1u << p))) {
-        g.announced |= 1u << p;
+    if (!(g.announced & (1ull << p))) {
+        g.announced |= 1ull << p;
         BMX_LOG_INFO("hud: player %d has his own HUD", p + 1);
     }
 }
@@ -648,21 +721,16 @@ void __cdecl on2D(uint32_t flags, uint32_t* items, int count, uint32_t extra) {
 }
 
 // ------------------------------------------------------------ overlay draw --
-// ZrwCameraBeginUpdate: remembers the camera being drawn.
-int __cdecl onBeginUpdate(const void* zrwCamera) {
-    g.currentCamera = zrwCamera;
-    return g_beginUpdate.original(zrwCamera);
-}
-
 // OverlayDrawA/B: draws the ordering table in every view, fitted to it and
 // filtered to its player's objects, keeping the pending flag set until all
 // views have drawn it. With two riders the shadows are depth-tested and drawn
 // after this, so the goal glow (3-D primitives in the table) must not write
 // depth.
 int overlayDraw(hook::Hook<IntFn>& h, uintptr_t pendingAddr, int which) {
+    perf::Timer timer(perf::Phase::Hud);
     int& pending = global<int>(pendingAddr);
     const int wasPending = pending;
-    const int view = split::viewOf(g.currentCamera);
+    const int view = split::currentView();
     learnPools();
     g.view = view;
     g.mapping = view >= 0;
@@ -694,8 +762,9 @@ int overlayDraw(hook::Hook<IntFn>& h, uintptr_t pendingAddr, int which) {
     g.view = -1;
 
     if (view >= 0 && wasPending) {
-        g.drawnViews[which] |= static_cast<uint8_t>(1 << view);
-        const uint8_t all = static_cast<uint8_t>((1 << split::viewCount()) - 1);
+        g.drawnViews[which] |= 1ull << view;
+        const int views = split::viewCount();
+        const uint64_t all = views >= 64 ? ~0ull : (1ull << views) - 1;
         if ((g.drawnViews[which] & all) != all) pending = wasPending;
     }
     return result;
@@ -830,10 +899,10 @@ bool takeRoute(int id) {
 
 bool install() {
     bool ok = true;
-    ok &= g_beginUpdate.install(fn::ZrwCameraBeginUpdate, &onBeginUpdate, "ZrwCameraBeginUpdate");
     ok &= g_overlayDrawA.install(fn::OverlayDrawA, &onOverlayDrawA, "OverlayDrawA");
     ok &= g_overlayDrawB.install(fn::OverlayDrawB, &onOverlayDrawB, "OverlayDrawB");
     ok &= g_drawPrim.install(fn::OverlayDrawPrim, &onDrawPrim, "OverlayDrawPrim");
+    ok &= g_drawTable.install(fn::OverlayDrawTable, &onDrawTable, "OverlayDrawTable");
     ok &= g_lines.install(fn::Zgl2DLines, &on2D<g_lines, 2>, "Zgl2DLines");
     ok &= g_tris.install(fn::Zgl2DTris, &on2D<g_tris, 3>, "Zgl2DTris");
     ok &= g_quads.install(fn::Zgl2DQuads, &on2D<g_quads, 4>, "Zgl2DQuads");
@@ -868,6 +937,7 @@ bool install() {
         ok &= g_overlayInit.install(fn::OverlayInit, &onOverlayInit, "OverlayInit");
         if (!ok) return false;
     }
+    if (!installBiggerLists()) return false;
     g_boxes.resize(kMaxItems);
     g_runCentre.resize(kMaxItems);
     g_order.resize(kMaxItems);

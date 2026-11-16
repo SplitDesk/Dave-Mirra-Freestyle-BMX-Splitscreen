@@ -32,6 +32,13 @@ Contents: [General](#general) · [Riders](#riders) ·
 | 0x56B614 | `kLevel` | uint8 park 0..11. |
 | 0x56B701 | `kSessionMode` | uint8 set by the mode menu. |
 | 0x56B702 | `kSessionSubMode` | uint8 game type: 0 ProQuest, 1 Session, 2 Freeride. |
+| 0x4376B4 | `kGuiHeapSize` | imm32 of `push 0x300000`: the GUI's heap (zmemDMM), taken from the static arena each time the GUI starts (0x437640). It holds the rider select's texts and images and runs out ("DMM failed to allocate") near 16 select screens. |
+| 0x45B3B8 | `kStaticArenaSize` | imm32 of `push 0x400000`: the static arena, set up at start-up (0x45B270 → 0x485C80). |
+| 0x489CF0 | `GameAssert` | (why, file, line, function) the game's assert, called through 0x56147C by 0x47ED10: a "RenderWare Application Error" message box; Yes breaks into a debugger, Cancel quits. |
+| 0x55F360 | `kActorCount` | int 64: the actors (`kActorSize` 0x278 bytes each, a rider has two: bike and body), taken from the static arena at start-up (0x472630). 64 runs out at 32 riders ("ZACTOR: Error - failed to allocate"). |
+| 0x641E1C | `kActorPool` | The actors, 0 until made. |
+| 0x5F8F38 | `kGuiHeapFree` | The GUI heap's first free block {+4 next, +8 size}, −1 when none. |
+| 0x670898 | `kStaticArenaEnd` | uint32 end of the static arena, 0 until it is set up. |
 | 0x412190 | *LoadCareer* | Loads `save\SAVE.DAT`. |
 | 0x412340 | `SaveCareer` | () writes `save\SAVE.DAT` (careers, PlayerConfig, records); returns 0 on success. |
 
@@ -49,19 +56,31 @@ slots (`kRiderSlotsInExe`).
 | 0x409CD0 | `ReplaysDestroy` | Level end: destroys the riders' replays (one per rider, plus a shared one when the count is above 1). |
 | 0x40C190 | `RiderRestart` | (slot, show) reset, start position, `RidersUpdate`. |
 | 0x40CF50 | `RiderRunSetup` | *(inferred)* (slot) per rider in the run-start reset. |
+| 0x408A80 | `ImpactShake` | *(inferred)* () starts the shake sequence at 0x554724 (0x45FDC0), as hard impacts do. |
 | 0x41FC40 | `RidersUpdate` | Updates `kRiderCount` riders. |
-| 0x420C90 | *RiderGetState* | Returns RiderState +0x3DC. |
+| 0x420C90 | *RiderGetState* | Returns `kState`. |
+| 0x420CB0 | `RiderSetMode` | (rider*, mode) → mode: runs the old mode's exit handler (0x557898) and the new mode's entry handler (0x5578B4), which returns the mode set. Mode 2's entry (0x424740) hands the rider's motion to the body (`kBody`). |
+| 0x425940 | `RiderGroundPost` | (rider*) ground physics after the move (mode 0's post handler, 0x557908). Each frame the leading wheel casts two rays, from its centre to its edge 40 units (`kWheelRaySide`) either side plus its velocity, at the world (`CollideLine`, returning to `kWheelWallTest`). On a wall (a face too steep to ride on) an impact, −velocity · normal, above 10 plays sound 0xBBC; one of 60 × rider +0x6E0 or more bails the rider (`RiderSetMode`(2), `kTrickName2` = 0, `RiderAddImpact`). Below that, within 15° of head-on the wheels' velocities are reversed at a quarter and the riding direction flips (`kFlags` 0x40000); otherwise the wheel is turned along the wall and slowed. |
+| 0x425B09 | `kWheelWallTest` | Return address of that wheel test's `CollideLine` call. |
+| 0x42E2F0 | *MovingObjectsUpdate* | Moves the level's moving objects. One whose type is 8 or 9 and whose box (the rider's point being `kPosition` + `kTestOffset`, 120 units of height allowed above and below) holds a rider hits him (0x42E61B): `RiderSetMode`(2), `kTrickName2` = 3, body parts 0, 1, 2 and 13 take the object's velocity × 1.05 lifted by 15, `RiderAddImpact` for parts 0 and 13 with the object's speed, then, when `kImpactWait` is 0, sounds 0xBBC, 0xBBD and 0xBBE, `ImpactShake` and `kImpactWait` = 0x3C. |
 | 0x430410 | *ReplayControl* | Saves or restores a whole RiderState. |
 | 0x430E70 | `RidersReadInput` | Controller → RiderState, per rider. |
 | 0x431000 | `RidersApplyInput` | RiderState input → rider controls, per active rider. |
 | 0x4316C0 | `CreateRider` | (slot, character, outfit, bike) queues the models and sets up the RiderState. |
 | 0x431AA0 | `RiderReset` | (slot, show) physics reset, actors shown or hidden, active bit. |
+| 0x431CA0 | *RiderSetSubState* | (rider*, level, state) sets that depth of the state stack (+0x3D..+0x40) and clears the deeper ones. The level-0 handlers set state 6 (bail) when `kState` is 2. |
 | 0x431DD0 | `RiderSubState` | (rider*, level) → the state at that depth of the state stack. |
+| 0x431E10 | `RiderAddImpact` | (rider*, part, float speed) adds the speed, scaled by the part's weight (0x558914), to rider +0x58. |
+| 0x436020 | *RiderImpact* | (body, part, float speed, contact*) impact callback of the body: nothing below speed 5; sounds 0xBBD and 0xBBE by speed band (5, 10, 25, 50) and `kImpactWait` = 0x2D. |
+| 0x469B00 | `CollideLine` | (from*, to*, hit*) → whether the segment hits the world (NgIFzcollide.c); fills a 0xD8-byte hit: uint32 +0 type (1 world face, 2 object), float[3] +0x08 point, float +0x18 fraction along the segment, float[3] +0x1C normal, float +0x28 −normal · point, +0x30 face record* (here +0x48: normal and plane again, byte +0x5C 0x88, u16 +0x5E surface flags), +0x38 material* (here +0xD0; its low 4 bits pick the impact sound). |
 | 0x452E80 | *CreateBikePhysics* | Stores each rider's bikePhysics* in `kBikePhysicsTable`, modulo 2. |
 | 0x4654B0 | `PoseActor` | (actor) skeleton from the animation, then the model transform. |
 | 0x4659E0 | `PoseActiveRider` | Per frame: poses the bike and body of the active camera's rider only. |
-| 0x475A30 / 0x475A60 | *ActorShow*, *ActorHide* | Set or clear an actor's visibility bit (actor +4 bit 0). |
-| 0x5578D0, 0x5578EC, 0x557908, 0x557924 | *RiderStateTables* | The pre, main, post and final rider state handlers, indexed by RiderState +0x3DC. |
+| 0x475A30 / 0x475A60 | `ActorShow`, `ActorHide` | (actor) set or clear its visibility bit (`kActorFlags` +4, bit 0 `kActorVisible`) and enable or disable its model object (0x487600). |
+| 0x557898, 0x5578B4 | *RiderModeExit*, *RiderModeEnter* | Exit and entry handlers by mode, run by `RiderSetMode`. |
+| 0x557844 | `kWheelRaySide` | float 40, the sideways offset of the wheel rays (`RiderGroundPost`). |
+| 0x5578D0, 0x5578EC, 0x557908, 0x557924 | *RiderStateTables* | The pre, main, post and final rider state handlers, indexed by `kState`. |
+| 0x55886C | `kPedalTopSpeed` | float 43: a rider's pedalling top speed is this × `kSpeedStat`. |
 | 0x574BC4 | `kBikePhysicsTable` | void*[2] bikePhysics per slot. |
 | 0x574CA4 | `kBikePhysicsCount` | int next slot (0..1). |
 | 0x56B615 | `kCurrentTurnPlayer` | uint8 the rider whose turn it is. |
@@ -78,15 +97,25 @@ slots (`kRiderSlotsInExe`).
 | +0x010 | *ButtonsChanged* | *(inferred)* Controller +0x14 (pressed this frame). |
 | +0x014 | *Analog* | 2 sticks × (x, y) floats, scaled 1/127. |
 | +0x038 | `kFlags` | Bit 0: the rider is active (updated each frame). |
+| +0x04D | `kImpactWait` | uint8 frames before the next impact sound, counted down each frame (0x431538). |
 | +0x04E | `kTrickName` | uint8 trick shown by HUD element 8. |
-| +0x04F | `kTrickName2` | uint8 trick shown by HUD element 7 in sub-state 6. |
+| +0x04F | `kTrickName2` | uint8 trick shown by HUD element 7 in sub-state 6 (the bail). |
 | +0x05C | `kRunScore` | int32 points banked this run. |
 | +0x060 | `kSessionScore` | int32 session total: SessionStart (0x40A8C0) zeroes it; the run end (0x40B2D4) adds `kRunScore` of the turn rider. |
 | +0x064 | `kComboValue` | int32 current combo, added to `kRunScore` when banked. |
 | +0x0EC | *ComboState* | uint8: 0 none, 1 airborne, 2 in trick, 3 landing. |
-| +0x3DC | `kState` | uint8 index into the state handler tables. |
+| +0x3DC | `kState` | uint8 physics mode, an index into the mode handler tables: 2 bail (`kModeBail`), 0xFF set by `RiderReset` (`kModeReset`). |
 | +0x3E0 | `kMatrix` | Orientation matrix; position float[3] at +0x420. |
+| +0x420 | `kPosition` | float[3]. |
+| +0x430 | `kTestOffset` | float[3] added to `kPosition` where moving objects test the rider. |
+| +0x448 | `kVelocity` | float[3] added to `kPosition` each frame. |
+| +0x484 | *Speed* | float length of `kVelocity`. |
+| +0x6DC | `kSpeedStat` | float speed stat: pedalling pushes the bike (+0xC60) while *Speed* is below `kPedalTopSpeed` × it (0x433D10, 0x4340A0). |
 | +0xB94 | `kBikeActor` | actor* of the bike. |
+| +0xB98 | `kBody` | Dynamics object of the body, which falls while the rider bails; body part k's velocity, float[3], at +0x88 + k × 0xB4 (`kBodyPartVelocity`, `kBodyPartStride`). |
+| +0xC10 | `kBikeCentre` | float[3]; a wheel's position is its local offset through `kBikeMatrix` (`TransformPoint`), plus this. |
+| +0xC20 | `kBikeMatrix` | float[4][4] bike orientation. |
+| +0xC88 | `kWheels` | 2 wheels (`kWheelCount`), 0x84 bytes each (`kWheelStride`): +0 local offset float[3], +0x10 radius *(inferred)*, +0x14 velocity float[3]. |
 | +0xD90 | `kRiderActor` | actor* of the body. |
 
 ## Input
@@ -165,7 +194,7 @@ The game's buttons follow a PlayStation pad: 0x1 up, 0x2 down, 0x4 left,
 | Address | Name | Description |
 |---|---|---|
 | 0x480F30 | `FovScale` | Field-of-view units → scale, returned in ST0. |
-| 0x481640 | `TransformPoint` | (out*, matrix*, in*). |
+| 0x481640 | `TransformPoint` | (out*, matrix*, in*) out = matrix × in + its translation. |
 | 0x4820C0 | `ZobjCameraUpdate` | (zobj) pushes the object's transform into its zrwCamera. |
 | 0x4821C0 | `ZobjCameraCreate` | () → zobjCamera*, its zrwCamera at +0x2C. |
 | 0x482310 | `ZobjCameraMatrix` | (zobjCamera, 0) → its cached view matrix. |
@@ -250,10 +279,10 @@ y × height / 480). An object handle is `index | size << 12 | type << 14`.
 | 0x415300 | `HudEnable` | (element, on) shows or hides an element. |
 | 0x415370 | `HudSet` | (id, data*) sets an element of the one shared HUD; id 1 score, 2 timer, 7/8 trick names, 0xA tutorial hint, 0xC message line (`kHudMessage`), 0x10 screen fade. |
 | 0x4153A0 | *HudGet* | (id, data*) reads an element's value. |
-| 0x457B00 | *OverlayFlip* | End of the HUD tick: swaps the double-buffered pools. |
+| 0x457B00 | *OverlayFlip* | End of the HUD tick: swaps the double-buffered pools and empties `kOverlayFreeList`. |
 | 0x457F70 | `OverlayPool` | (type, size, bank, &base, &count, &kind). |
 | 0x4578F0 | `OverlayInit` | Links each pool's entries (28-bit links) and marks them free. |
-| 0x4580E0 | `OverlayAlloc` | (type, size) → handle of a free pool entry. |
+| 0x4580E0 | `OverlayAlloc` | (type, size) → handle of a free pool entry: the entry in bits 0..11, so a pool has at most 0x1000 entries, and the pool in bits 12..14. |
 | 0x4581A0 | `OverlayDestroy` | (handle). |
 | 0x458400 | `OverlayShow` | (handle, on) shows or hides an object; hiding clears the length of its primitives' tags. |
 | 0x458B00 | `OverlayMove` | Changes an object by handle; like the three below, it does not check for handle 0xFFFF. |
@@ -263,23 +292,30 @@ y × height / 480). An object handle is `index | size << 12 | type << 14`.
 | 0x459DF0 | `OverlayImmediateText` | (font*, text, x, y, rgb, flags) text for one frame. |
 | 0x459F30 | `OverlayTextWidth` | (text, font*) → width in 640×480 units. |
 | 0x462050 | `OverlayDrawPrim` | (prim) one primitive → 2-D quads and lines. |
-| 0x462350 | *DrawOTag* | Draws an ordering table. |
+| 0x462350 | `OverlayDrawTable` | (entry*) draws an ordering table: follows the links from `entry` down to the end (link 0x0FFFFFFF), drawing each primitive with a length. A cleared entry links only to the one below it. |
 | 0x462940 | *OverlayImmediate* | (x, y, glyph) builds per-frame primitives at `kOverlayPrimCursor`. |
 | 0x463820 | `OverlayBeginA` | A new HUD frame: clears the ordering table, rewinds `kOverlayPrimCursor` and sets the pending flag. |
 | 0x463860 | `OverlayDrawA` | Per-camera draw callback: draws the ordering table if `kOverlayPendingA` is set, then clears it, so the HUD shows in the first camera drawn. |
 | 0x4639A0 | `OverlayDrawB` | The same for `kOverlayPendingB` (the GUI). |
 | 0x463AB0 | `OverlayBeginB` | The same as `OverlayBeginA` for the GUI. |
+| 0x457CA2 … | `kOverlayListSizeRefs` | The 13 imm32s of `cmp eax, 0x23C` that check the lists' pushes and the flip. |
+| 0x457CD9, 0x458275 … | `kFreeListLastRefs`, `kFreeListRefs` | The operands holding `kOverlayFreeList` (14 places, one of them its address − 2). |
+| 0x457D86, 0x458298 … | `kDirtyListLastRefs`, `kDirtyListRefs` | The operands holding `kOverlayDirtyList` (14 places, one of them its address − 2). |
+| 0x463843, 0x463ADF | `kOverlayPrimBufferRefs` | imm32 of `mov [kOverlayPrimCursor], 0x678560` in `OverlayBeginA` and `OverlayBeginB`. |
 | 0x48CCF0 | `Zgl2DLines` | (flags, items {tex, v0, v1}, n, m); flags & 0x2000000 screen space. |
 | 0x48D120 | `Zgl2DTris` | (flags, items {tex, v0, v1, v2}, n, m). |
 | 0x48D660 | `Zgl2DQuads` | (flags, items {tex, v0..v3}, n, m); a vertex is x, y, z, ?, u, v, rgba. |
 | 0x54D0DC | `kMeterScale` | float, the height meter's scale. |
 | 0x556F00 | `kHudElements` | 17 × 0x18-byte elements: flags (bit 0 hidden), show, update, enable, set, get. |
+| 0x5965A4 | `kOverlayFreeList` | u16[0x23C] (`kOverlayListEntries`) handles of the objects freed this frame. Nothing stops a push past the end: the error handler (0x47ED10) is called and the push stores. |
 | 0x596A38 | `kGlyphPool` | Text glyph pool (0, 1): 2 banks of 128. |
 | 0x5A0A38 | `kBoxPool` | Box pool (0, 0): 2 banks of 16. |
+| 0x5A1E38 | `kOverlayDirtyList` | u16[0x23C] handles of the objects changed this frame; checked like `kOverlayFreeList`. |
 | 0x5A22BC | *OverlayBank* | uint8 pool bank being built (flips each frame). |
 | 0x56BF38 | `kHudFont` | The HUD's font, also the score's. |
 | 0x5D24FC | `kOverlayPendingA` | int: `OverlayDrawA` draws on the next camera. |
 | 0x5D2504 | `kOverlayPendingB` | int: `OverlayDrawB` draws on the next camera. |
+| 0x678560 | `kOverlayPrimBuffer` | The per-frame primitives, 0x13E70 bytes (`kOverlayPrimBufferSize`), up to 0x68C3D0; nothing checks the end. |
 | 0x68EBE0 | `kOverlayPrimCursor` | Next free per-frame primitive (0xFFFFFFFF none). |
 
 **HUD state** 0x56BD48..0x56C080 (`addr::hud`); the two fonts inside are
@@ -314,6 +350,7 @@ the top. Both hold 1024 primitives without a check.
 
 | Address | Name | Description |
 |---|---|---|
+| 0x45FF60 | `OtClear` | (table*, count) links each ordering-table entry to the one below and ends the chain at entry 0 (\|= 0x0FFFFFFF). It counts in 16 bits (`si`), so at most 0x8000 entries. |
 | 0x4639F0 | `GuiPrimSetup` | () sets `kGuiPrimBase` to the static buffer if 0. |
 | 0x463826 | `kOtCountA` | imm32 of `push 0x400` in `OverlayBeginA`. |
 | 0x463874 | `kOtTopDrawA` | imm32 of `add eax, 0xFFC` in `OverlayDrawA`. |
@@ -377,6 +414,7 @@ SAVE, 0xC level intro, 0xD-0xF CHALLENGES, 0x10 RESULTS, 0x11 new record name,
 | 0x415400 | `ScreenOpen` | (id) closes the screen showing and opens `id` (0 none). |
 | 0x415B70 | `OptionsCreate` | OPTIONS (entry 0x5570A8): (show) title, labels, then the values (0x416060). |
 | 0x415CF0 | `OptionsTick` | () → acted; left/right change camera type or tutorial hints on the turn player's pad. |
+| 0x416060 | *OptionsValues* | Makes the camera type and tutorial hints values (texts 0 and 1); hints show string 0x101A (off) + the hints bit, so 0x101B is on. |
 | 0x41A480 | `RunFinishedCreate` | RUN FINISHED (entry 0x557108): (show) title and items. |
 | 0x41A830 | `RunFinishedDraw` | () one score line per rider, then the items. |
 | 0x41AD00 | `RunFinishedTick` | () → acted, by item action 0..8 (6 trick list). |
@@ -410,7 +448,7 @@ SAVE, 0xC level intro, 0xD-0xF CHALLENGES, 0x10 RESULTS, 0x11 new record name,
 | 0x439A00 | *GuiParseScreen* | (page) parses the SCRN header (+0x0C backdrop) and creates the EDEF elements. |
 | 0x44D990 | *FrontEndReturn* | Back to the front end after a level: the rider select on step `kSelectReturnStep` 1..3, else 0x43F730 when 0x56B618 is set, else `MainMenuEnter(0)`. |
 | 0x44DD10 | `FrontEndExit` | (what) leaves the front end: 0 starts the game, 1 quits. |
-| 0x46B030 | `MemAlloc` | (size) → handle. |
+| 0x46B030 | `MemAlloc` | (size) → handle in the GUI's heap (`kGuiHeapSize`); 0 and an assert when it is full. |
 | 0x46B140 | `MemFree` | (handle). |
 | 0x46B470 | `MemLock` | (handle) → pointer. |
 | 0x46B4F0 | `MemUnlock` | (handle). |

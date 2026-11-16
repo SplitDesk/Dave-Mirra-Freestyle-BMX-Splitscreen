@@ -14,7 +14,9 @@
 #include "mod/frontend.hpp"
 #include "mod/hud.hpp"
 #include "mod/perf.hpp"
+#include "mod/rider_collision.hpp"
 #include "mod/riders.hpp"
+#include "mod/view_culling.hpp"
 
 namespace bmx::split {
 namespace {
@@ -46,6 +48,7 @@ struct State {
     ViewRect rects[kMaxViews];
     int fullMenu = 0;  // the in-game screen showing full screen, 0 for none
 
+    const void* drawing = nullptr;  // the engine camera being drawn
     uint32_t frame = 0;
     int lastGameState = -1, lastRiderCount = -1, lastTurn = -1;
 };
@@ -54,6 +57,7 @@ State g;
 hook::Hook<RenderFrameFn> g_renderFrame;
 hook::Hook<ZrwDestroyFn> g_zrwDestroy;
 hook::Hook<VoidFn> g_cameraUpdateAll;
+hook::Hook<int(__cdecl*)(const void* zrwCamera)> g_beginUpdate;
 
 // The screen's width / height.
 float screenAspect() {
@@ -247,10 +251,22 @@ void beforeRender() {
     for (int i = 0; i < g.extraCount; ++i) applyViewWindow(g.extras[i].cam);
 }
 
-// RenderFrame.
+// RenderFrame, timed, with the blinking ghosts hidden in their hidden phase
+// and each view's far riders left out of it.
 int __cdecl onRenderFrame() {
     beforeRender();
+    perf::Timer timer(perf::Phase::Render);
+    ridercollision::GhostBlink blink;
+    viewculling::Frame culling;
     return g_renderFrame.original();
+}
+
+// ZrwCameraBeginUpdate: remembers the camera being drawn and sets its view's
+// riders.
+int __cdecl onBeginUpdate(const void* zrwCamera) {
+    g.drawing = zrwCamera;
+    viewculling::beginView(viewOf(zrwCamera));
+    return g_beginUpdate.original(zrwCamera);
 }
 
 // CameraUpdateAll: the game keeps a camera controller per rider but runs the
@@ -258,6 +274,7 @@ int __cdecl onRenderFrame() {
 // again with controller 1 active and view 2's camera object standing in for
 // the game's, then for each extra rider in slot 2 into his view's camera.
 void __cdecl onCameraUpdateAll() {
+    perf::Timer timer(perf::Phase::Cameras);
     g_cameraUpdateAll.original();
     if (!g.applied || g.extraCount == 0 || !riders::secondActive()) return;
 
@@ -321,6 +338,8 @@ int viewOf(const void* zrwCamera) {
     return -1;
 }
 
+int currentView() { return viewOf(g.drawing); }
+
 ViewRect viewRect(int view) { return (view >= 0 && view < g.views) ? g.rects[view] : ViewRect{}; }
 
 void* viewCameraObject(int view) {
@@ -334,6 +353,7 @@ bool install(const Config& cfg) {
     ok &= g_renderFrame.install(fn::RenderFrame, &onRenderFrame, "RenderFrame");
     ok &= g_zrwDestroy.install(fn::ZrwCameraDestroy, &onZrwDestroy, "ZrwCameraDestroy");
     ok &= g_cameraUpdateAll.install(fn::CameraUpdateAll, &onCameraUpdateAll, "CameraUpdateAll");
+    ok &= g_beginUpdate.install(fn::ZrwCameraBeginUpdate, &onBeginUpdate, "ZrwCameraBeginUpdate");
     if (ok) BMX_LOG_INFO("split: ready (mode %s)", splitModeName(cfg.splitMode));
     return ok;
 }

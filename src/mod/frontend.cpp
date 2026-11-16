@@ -12,6 +12,7 @@
 #include "game/engine.hpp"
 #include "hook/hook.hpp"
 #include "mod/input.hpp"
+#include "mod/test_players.hpp"
 
 namespace bmx::frontend {
 namespace {
@@ -384,10 +385,16 @@ int join(uint32_t buttons) {
     const int pad = input::freshPress(buttons);
     if (pad < 0) return -1;
     if (pad == input::kKeyboard && input::usesKeyboard(0)) return -1;
-    const int slot = m.join.join(pad);
+    return joinDevice(pad);
+}
+
+int joinDevice(int device) {
+    const int slot = m.join.join(device);
     if (slot <= 0) return -1;
-    if (pad == input::kKeyboard) BMX_LOG_INFO("frontend: the keyboard joined as player %d", slot + 1);
-    else BMX_LOG_INFO("frontend: pad %d joined as player %d", pad + 1, slot + 1);
+    if (device == input::kKeyboard) BMX_LOG_INFO("frontend: the keyboard joined as player %d", slot + 1);
+    else if (testplayers::isTestDevice(device))
+        BMX_LOG_INFO("frontend: test player %d joined as player %d", testplayers::indexOf(device) + 1, slot + 1);
+    else BMX_LOG_INFO("frontend: pad %d joined as player %d", device + 1, slot + 1);
     applyJoins();
     playSound(kConfirmSound);
     return slot;

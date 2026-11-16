@@ -56,6 +56,9 @@ constexpr uint32_t kPick = gamebits::kCross | gamebits::kEnter, kPickStart = gam
 constexpr uint32_t kScreenshot = gamebits::kL1;
 constexpr int kNowMode = 0, kScreenshotMode = 2;  // the ControllerCheck modes it passes
 constexpr int kPickedSound = 0x7D2;               // played when an item is picked (0x41AF9B)
+constexpr int kMoveSound = 2000;                  // the menus' move sound
+// Players' lines on one page; left and right turn the pages.
+constexpr int kLinesPerPage = 8;
 
 using OpenFn = void(__cdecl*)(int id);
 using StringFn = const char*(__cdecl*)(uint32_t id);
@@ -89,6 +92,7 @@ struct State {
     bool showFirst = false;  // the next RUN FINISHED opens as PLAYERS SCORE
     bool opening = false;    // PLAYERS SCORE is opening
     bool teamLine = false;   // RUN FINISHED is drawing its score line with the team total
+    int page = 0;            // PLAYERS SCORE's page
 };
 State g;
 
@@ -125,7 +129,10 @@ void openPlayersScore() {
 // Laid out like RUN FINISHED: a title, one line per player ("player 1:
 // 1234"), then the team total in co-op or the winner in versus ("player 2
 // wins" or "tie", as the game's 2-player results put it, 0x4134B7), and the
-// "continue" item.
+// "continue" item. Past kLinesPerPage players the lines are in pages, with
+// "page 1/2" by the title.
+
+int pages() { return std::max(1, (g.players + kLinesPerPage - 1) / kLinesPerPage); }
 
 // "player 1", "player 2" and so on: the game's "player" and a number.
 void playerName(int p, char* buf, size_t n) { std::snprintf(buf, n, "%s %d", GetString(kPlayerString), p + 1); }
@@ -159,6 +166,15 @@ void __cdecl createScreen(int show) {
 }
 
 int __cdecl tickScreen() {
+    const int turn = global<uint8_t>(addr::kCurrentTurnPlayer);
+    const int step = ControllerCheck(turn, gamebits::kRight, kNowMode)  ? 1
+                     : ControllerCheck(turn, gamebits::kLeft, kNowMode) ? -1
+                                                                         : 0;
+    if (step != 0 && pages() > 1) {
+        g.page = (g.page + step + pages()) % pages();
+        PlaySound(kMoveSound, 0, 0, 0, 0);
+        return 1;
+    }
     if (!picked()) return 0;
     ScreenOpen(addr::kRunFinishedScreen);
     PlaySound(kPickedSound, 0, 0, 0, 0);
@@ -167,19 +183,27 @@ int __cdecl tickScreen() {
 
 void __cdecl drawScreen() {
     char name[40], label[48], value[16];
+    if (pages() > 1) {
+        std::snprintf(value, sizeof value, "%d/%d", g.page + 1, pages());
+        Text(kFont, value, kValueRight - TextWidth(value, kFont), kTitleY, kTextColour, 0);
+    }
     int y = kLinesY;
     int winners = 0, winner = 0;
-    for (int p = 0; p < g.players; ++p, y += kLineStep) {
-        playerName(p, name, sizeof name);
-        std::snprintf(label, sizeof label, "%s:", name);
-        std::snprintf(value, sizeof value, "%ld", static_cast<long>(g.scores[p]));
+    const int first = g.page * kLinesPerPage, last = std::min(g.players, first + kLinesPerPage);
+    for (int p = 0; p < g.players; ++p) {
         const bool won = !g.coop && g.scores[p] == g.best;
         if (won) {
             ++winners;
             winner = p;
         }
+        if (p < first || p >= last) continue;
+        playerName(p, name, sizeof name);
+        std::snprintf(label, sizeof label, "%s:", name);
+        std::snprintf(value, sizeof value, "%ld", static_cast<long>(g.scores[p]));
         line(label, value, won ? kWinnerColour : kValueColour, y);
+        y += kLineStep;
     }
+    y = kLinesY + std::min(g.players, kLinesPerPage) * kLineStep;
     if (g.coop) {
         std::snprintf(label, sizeof label, "%s:", GetString(kTotalString));
         std::snprintf(value, sizeof value, "%ld", static_cast<long>(g.total));
@@ -271,6 +295,7 @@ void runOver() {
         if (p == 0 || g.scores[p] > g.best) g.best = g.scores[p];
     }
     g.players = players;
+    g.page = 0;
     g.coop = scoring::teamScore();
     g.showFirst = true;
     BMX_LOG_INFO("playersscore: run over, %d players, %s %ld", players, g.coop ? "team total" : "versus, best",

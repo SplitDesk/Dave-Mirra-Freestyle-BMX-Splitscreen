@@ -28,6 +28,10 @@ int joinedPlayers();
 // keyboard; returns the slot taken, or -1.
 int join(uint32_t buttons);
 
+// Joins a player on `device` (a pad, the keyboard or a test player's device);
+// returns the slot taken, or -1 when the game is full or the device is in use.
+int joinDevice(int device);
+
 // Removes a joined player (slot 1 and up); the players after him move up.
 void leave(int slot);
 

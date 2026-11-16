@@ -6,6 +6,7 @@
 
 #include <cstdint>
 
+#include "core/limits.hpp"
 #include "core/pad_layout.hpp"
 
 namespace bmx::input {
@@ -22,8 +23,8 @@ void setLayout(const PadLayout& layout);
 PadInputs padInputs(int pad);
 
 // The keyboard as a device a player can join with, like a pad, with player
-// 1's keys (the game's layout, 0x561E68). Pads are 0 and up.
-inline constexpr int kKeyboard = 16;
+// 1's keys (the game's layout, 0x561E68). Pads are 0 up to kKeyboard - 1.
+inline constexpr int kKeyboard = kMaxPlayers;
 
 // Reads a player's own pad (game button bits) in the front end, for the
 // screens where each player chooses for himself. Returns false when the

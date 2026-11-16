@@ -12,12 +12,15 @@ enum class LogLevel { Error, Warn, Info, Debug };
 enum class SplitMode { Auto, Horizontal, Vertical, Grid };
 enum class IconType { Auto, Default, PS, Xbox, Nintendo };
 
-// The mod's settings. The split mode can also be changed in the start menu's
-// OPTIONS and the pad layout in the main menu's controller options;
+// The mod's settings. The split mode, performance mode and collision can
+// also be changed in the start menu's OPTIONS and the pad layout in the main
+// menu's controller options;
 // widescreenFixFov is the FOVFactor of DaveMirraFreestyleBMXWidescreenFix.
 struct Config {
-    bool enabled = true;
     LogLevel logLevel = LogLevel::Info;
+    bool collision = true;
+    bool performanceMode = false;  // mod/view_culling.hpp
+    bool debug = false;            // test players (mod/test_players.hpp)
     SplitMode splitMode = SplitMode::Auto;
     IconType iconType = IconType::Auto;
     PadLayout padLayout = PadLayout::defaults();

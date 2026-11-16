@@ -57,7 +57,7 @@ IniMap parseIni(std::string_view text) {
 // One line of an ini text: its position, the section it is in, and whether it
 // is a section header or a key line.
 struct IniLine {
-    size_t begin, next;
+    size_t begin = 0, next = 0;
     std::string section;
     bool header = false;
     std::string key;  // lower case; empty for other lines
@@ -71,7 +71,10 @@ std::vector<IniLine> iniLines(std::string_view text) {
         const size_t nl = text.find('\n', pos);
         const size_t next = nl == std::string_view::npos ? text.size() : nl + 1;
         const std::string_view line = trim(text.substr(pos, next - pos));
-        IniLine l{pos, next, current};
+        IniLine l;
+        l.begin = pos;
+        l.next = next;
+        l.section = current;
         if (line.empty()) {
             l.blank = true;
         } else if (line.front() == '[') {
@@ -190,7 +193,6 @@ Config configFromIni(std::string_view text, std::string* warnings) {
         return it == ini.end() ? nullptr : &it->second;
     };
 
-    if (auto v = get("general.enabled")) cfg.enabled = (*v != "0" && lower(*v) != "false");
 
     if (auto v = get("general.loglevel")) {
         const std::string s = lower(*v);
@@ -200,6 +202,10 @@ Config configFromIni(std::string_view text, std::string* warnings) {
         else if (s == "debug") cfg.logLevel = LogLevel::Debug;
         else warn(warnings, "LogLevel '" + *v + "' unknown, using info");
     }
+
+    if (auto v = get("general.collision")) cfg.collision = (*v != "0" && lower(*v) != "false");
+    if (auto v = get("split.performancemode")) cfg.performanceMode = (*v != "0" && lower(*v) != "false");
+    if (auto v = get("general.debug")) cfg.debug = (*v != "0" && lower(*v) != "false");
 
     if (auto v = get("split.mode")) {
         const std::string s = lower(*v);

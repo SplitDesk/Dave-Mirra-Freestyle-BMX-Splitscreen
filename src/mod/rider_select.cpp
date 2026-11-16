@@ -13,7 +13,9 @@
 #include "game/engine.hpp"
 #include "hook/hook.hpp"
 #include "mod/frontend.hpp"
+#include "mod/game_heap.hpp"
 #include "mod/input.hpp"
+#include "mod/test_players.hpp"
 
 namespace bmx::riderselect {
 namespace {
@@ -94,7 +96,7 @@ struct State {
     std::array<uint8_t, addr::kSelectStateSize> pristineState{};
     // What players 3 and up picked; players 1 and 2 go through PlayerConfig.
     std::array<uint8_t, 3 * kMaxPlayers> picked{};
-    uint32_t pickedMask = 0;
+    uint64_t pickedMask = 0;
     uint32_t ticks = 0;
     bool unknownPrimLogged = false;
 };
@@ -109,7 +111,7 @@ uint8_t*& nextAsset(uint8_t* asset) { return field<uint8_t*>(asset, 4); }
 
 // Spare asset handles. When the game's free list runs dry, the spare handles
 // not in use (neither in the list nor set aside by a copy) are added to it.
-constexpr int kSpareAssets = 1024;
+constexpr int kSpareAssets = 128 * kMaxPlayers;
 alignas(16) uint8_t g_spareAssets[kSpareAssets][16];
 
 void addSpareAssets() {
@@ -265,7 +267,8 @@ void createCopy(int slot) {
     input::menuPad(slot, bits);
     int ignored[MenuButtons::kMaxEvents];
     c.buttons.update(bits, ignored);
-    BMX_LOG_INFO("riderselect: player %d has his own select screen", slot + 1);
+    BMX_LOG_INFO("riderselect: player %d has his own select screen (GUI memory: %u KB free)", slot + 1,
+                 gameheap::guiHeapFree() / 1024);
 }
 
 // Frees what a copy made for itself (images, groups and texts) and puts
@@ -469,8 +472,14 @@ int press(int slot, int event, int a, int b, int c) {
 // and starts the level step once everyone is ready.
 void tickCopies() {
     ++g.ticks;
-    const int joined = frontend::join(buttonsFor(guievent::kConfirm) | buttonsFor(guievent::kStart));
+    int joined = frontend::join(buttonsFor(guievent::kConfirm) | buttonsFor(guievent::kStart));
     if (joined > 0 && joined < kMaxCopies) createCopy(joined);
+    if (testplayers::removeHeld()) {
+        if (const int slot = testplayers::lastTestSlot(players()); slot > 0 && g.leaving < 0) g.leaving = slot;
+    } else if (testplayers::addHeld()) {
+        joined = frontend::joinDevice(testplayers::freeDevice(players()));
+        if (joined > 0 && joined < kMaxCopies) createCopy(joined);
+    }
     const int n = players();
     for (int slot = 1; slot < n && slot < kMaxCopies; ++slot) {
         if (!g.copy[slot].used) createCopy(slot);
@@ -583,7 +592,7 @@ void __cdecl onSelectLeave() {
         out[0] = pick(addr::kSelectRider);
         out[1] = pick(addr::kSelectOutfit);
         out[2] = pick(addr::kSelectBike);
-        g.pickedMask |= 1u << slot;
+        g.pickedMask |= 1ull << slot;
         if (slot == 1) {
             uint8_t* cfg = playerConfig(1);
             cfg[3] = out[0];
@@ -604,7 +613,7 @@ void __cdecl onSelectLeave() {
 }  // namespace
 
 bool pickOf(int player, uint8_t out[3]) {
-    if (player < 2 || player >= kMaxPlayers || !(g.pickedMask & (1u << player))) return false;
+    if (player < 2 || player >= kMaxPlayers || !(g.pickedMask & (1ull << player))) return false;
     std::memcpy(out, &g.picked[3 * player], 3);
     return true;
 }

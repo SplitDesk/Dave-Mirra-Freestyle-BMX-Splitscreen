@@ -1,0 +1,39 @@
+// The .asi's version resource, shown in its Properties > Details on Windows.
+// The version comes from common/version.hpp.
+
+#include <winver.h>
+
+#include "common/version.hpp"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION BMX_VERSION_MAJOR, BMX_VERSION_MINOR, BMX_VERSION_PATCH, 0
+PRODUCTVERSION BMX_VERSION_MAJOR, BMX_VERSION_MINOR, BMX_VERSION_PATCH, 0
+FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+#ifdef _DEBUG
+FILEFLAGS VS_FF_DEBUG
+#else
+FILEFLAGS 0x0L
+#endif
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_DLL
+FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName", "SplitDesk"
+            VALUE "FileDescription", "Dave Mirra Freestyle BMX Splitscreen"
+            VALUE "FileVersion", BMX_VERSION_STRING
+            VALUE "InternalName", "BmxSplitscreen"
+            VALUE "LegalCopyright", "MIT License"
+            VALUE "OriginalFilename", "BmxSplitscreen.asi"
+            VALUE "ProductName", "Dave Mirra Freestyle BMX Splitscreen"
+            VALUE "ProductVersion", BMX_VERSION_STRING
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

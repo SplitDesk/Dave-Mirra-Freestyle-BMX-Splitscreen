@@ -4,6 +4,7 @@
 #include <psapi.h>
 
 #include <algorithm>
+#include <iterator>
 #include <cstdint>
 
 #include "common/log.hpp"
@@ -26,6 +27,8 @@ struct State {
     int frames = 0, slowFrames = 0;
     double worstMs = 0;
     int guiPeak = 0;  // the most menu primitives in one frame
+    double phaseMs[static_cast<int>(Phase::Count)] = {};
+    int depth[static_cast<int>(Phase::Count)] = {};  // nested timers of a phase count once
 };
 State g;
 
@@ -59,10 +62,15 @@ void report(double seconds) {
     const DWORD gdi = GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS);
     const DWORD user = GetGuiResources(GetCurrentProcess(), GR_USEROBJECTS);
     constexpr double kMB = 1024.0 * 1024.0;
-    BMX_LOG_INFO("perf: %.0f s, %d frames (%.1f fps), worst %.0f ms, %d over %.0f ms | memory %.1f MB "
-                 "(private %.1f MB) | handles %lu, GDI %lu, USER %lu | cameras %d, GUI assets %d (free %d) | "
-                 "menu primitives peak %d of %d",
+    const double frames = std::max(g.frames, 1);
+    auto perFrame = [&](Phase p) { return g.phaseMs[static_cast<int>(p)] / frames; };
+    BMX_LOG_INFO("perf: %.0f s, %d frames (%.1f fps), worst %.0f ms, %d over %.0f ms | a frame: %.1f ms, riders "
+                 "%.1f ms, cameras %.1f ms, render %.1f ms (shadows %.1f, HUD %.1f) | memory %.1f MB (private "
+                 "%.1f MB) | handles %lu, GDI %lu, USER %lu | cameras %d, GUI assets %d (free %d) | menu "
+                 "primitives peak %d of %d",
                  seconds, g.frames, g.frames / seconds, g.worstMs, g.slowFrames, kSlowFrameMs,
+                 seconds * 1000.0 / frames, perFrame(Phase::Riders), perFrame(Phase::Cameras),
+                 perFrame(Phase::Render), perFrame(Phase::Shadows), perFrame(Phase::Hud),
                  mem.WorkingSetSize / kMB, mem.PrivateUsage / kMB, static_cast<unsigned long>(handles),
                  static_cast<unsigned long>(gdi), static_cast<unsigned long>(user), cameraCount(),
                  listLength(global<const uint8_t*>(addr::kGuiAssetList), 4),
@@ -94,6 +102,22 @@ void frame() {
     g.frames = g.slowFrames = 0;
     g.worstMs = 0;
     g.guiPeak = 0;
+    std::fill(std::begin(g.phaseMs), std::end(g.phaseMs), 0.0);
+}
+
+Timer::Timer(Phase phase) : phase_(phase), start_(0) {
+    if (g.depth[static_cast<int>(phase_)]++ > 0) return;
+    LARGE_INTEGER now;
+    QueryPerformanceCounter(&now);
+    start_ = now.QuadPart;
+}
+
+Timer::~Timer() {
+    if (--g.depth[static_cast<int>(phase_)] > 0 || !g.started) return;
+    LARGE_INTEGER now;
+    QueryPerformanceCounter(&now);
+    g.phaseMs[static_cast<int>(phase_)] +=
+        static_cast<double>(now.QuadPart - start_) * 1000.0 / static_cast<double>(g.frequency.QuadPart);
 }
 
 }  // namespace bmx::perf

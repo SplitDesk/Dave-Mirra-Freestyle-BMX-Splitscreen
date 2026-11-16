@@ -6,6 +6,8 @@
 namespace bmx {
 namespace {
 
+constexpr int kTwoRowsMax = 8;
+
 std::vector<Viewport> grid(int players, int cols, int rows) {
     std::vector<Viewport> out;
     out.reserve(players);
@@ -44,10 +46,15 @@ std::vector<Viewport> computeSplitLayout(int players, SplitMode mode, float scre
         case SplitMode::Vertical:   return grid(players, players, 1);
         case SplitMode::Grid:
         default: {
-            // Two rows: 3-4 players in 2x2, 5-6 in 3x2, 7-8 in 4x2.
+            // Two rows up to 8 players: 3-4 in 2x2, 5-6 in 3x2, 7-8 in 4x2.
+            // More get a square grid: 9 in 3x3, 10-12 in 4x3, 64 in 8x8.
             if (players == 2) return grid(players, 2, 1);
-            const int cols = static_cast<int>(std::ceil(players / 2.0f));
-            return grid(players, std::max(cols, 2), 2);
+            if (players <= kTwoRowsMax) {
+                const int cols = static_cast<int>(std::ceil(players / 2.0f));
+                return grid(players, std::max(cols, 2), 2);
+            }
+            const int cols = static_cast<int>(std::ceil(std::sqrt(static_cast<float>(players))));
+            return grid(players, cols, (players + cols - 1) / cols);
         }
     }
 }

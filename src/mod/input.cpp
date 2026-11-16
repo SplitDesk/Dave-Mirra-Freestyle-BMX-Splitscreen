@@ -11,6 +11,7 @@
 #include "hook/hook.hpp"
 #include "input/gamepads.hpp"
 #include "mod/button_icons.hpp"
+#include "mod/test_players.hpp"
 
 namespace bmx::input {
 namespace {
@@ -114,6 +115,10 @@ bool deviceButtons(int device, uint32_t& bits) {
         bits = keyboardButtons();
         return true;
     }
+    if (testplayers::isTestDevice(device)) {
+        bits = testplayers::buttons(device);
+        return true;
+    }
     PadInputs held = 0;
     if (!gamepads::read(device, held)) return false;
     bits = padToGameBits(held, g.layout);
@@ -128,7 +133,8 @@ uint32_t padButtons(int device) {
 
 const char* deviceName(int device, char* buf, size_t n) {
     if (device == kKeyboard) return "the keyboard (player 1's keys)";
-    std::snprintf(buf, n, "pad%d", device + 1);
+    if (testplayers::isTestDevice(device)) std::snprintf(buf, n, "test player %d", testplayers::indexOf(device) + 1);
+    else std::snprintf(buf, n, "pad%d", device + 1);
     return buf;
 }
 
@@ -229,6 +235,7 @@ uint32_t __cdecl onControllerUpdate() {
         const uint32_t keys = field<uint32_t>(controller(slot), kCtlHeld);
         bits[slot] = playerBits(slot, keys);
         trace(slot, keys, padBitsFor(slot));
+        if (slot == 0) testplayers::recordPlayer1(bits[0]);
     }
 
     // The attract demo ends on a fresh press on player 1's record, so the
@@ -337,7 +344,10 @@ void bind(int player, const InputBinding& binding) {
         g.padIgnore[player] = 0;
     }
     char buf[32];
-    BMX_LOG_INFO("input: player %d = %s", player + 1, describe(binding, buf, sizeof buf));
+    if (binding.kind == InputBinding::Kind::None)
+        BMX_LOG_DEBUG("input: player %d = none", player + 1);
+    else
+        BMX_LOG_INFO("input: player %d = %s", player + 1, describe(binding, buf, sizeof buf));
 }
 
 }  // namespace
