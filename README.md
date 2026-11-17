@@ -3,7 +3,7 @@
 <img width="1920" height="1080" alt="2 player splitscreen" src="https://github.com/user-attachments/assets/931db4be-7fe7-4ce4-a511-2d9ec0869993" />
 <img width="1920" height="1080" alt="8 player splitscreen" src="https://github.com/user-attachments/assets/21f715a2-8b84-448b-bc1b-078c9de2fa84" />
 
-A mod that adds splitscreen multiplayer for up to 8 players to the PC version of
+A mod that adds splitscreen multiplayer to the PC version of
 Dave Mirra Freestyle BMX.
 
 ## Features
