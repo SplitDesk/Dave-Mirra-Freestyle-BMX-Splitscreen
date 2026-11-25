@@ -5,9 +5,9 @@
 // together.
 
 #define BMX_VERSION_MAJOR 1
-#define BMX_VERSION_MINOR 5
+#define BMX_VERSION_MINOR 6
 #define BMX_VERSION_PATCH 0
-#define BMX_VERSION_STRING "1.5"
+#define BMX_VERSION_STRING "1.6"
 
 #ifndef RC_INVOKED
 namespace bmx {
