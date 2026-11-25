@@ -1,6 +1,7 @@
 #pragma once
-// Gamepads through SDL3's gamepad subsystem, without an SDL window. Pads are
-// numbered in the order they were connected, from 0.
+// Gamepads through SDL3's gamepad subsystem, without an SDL window. SDL runs
+// on a poll thread of the mod's own; the game's thread reads a copy of the
+// pads' state. Pads are numbered in the order they were connected, from 0.
 
 #include <cstdint>
 #include <string>
@@ -18,13 +19,15 @@ enum class PadType {
     Nintendo,
 };
 
-// Loads SDL3 and starts its gamepad subsystem. Runs on the game's thread,
-// not in DllMain.
+// Loads SDL3 and starts the poll thread, which starts SDL's gamepad
+// subsystem and then handles connections and disconnections and reads the
+// pads. Runs on the game's thread, not in DllMain.
 bool init();
+// Stops the poll thread and SDL.
 void shutdown();
 
-// Handles connections and disconnections and refreshes the pads' state; runs
-// once per game frame.
+// Takes the poll thread's latest copy of the pads for the functions below;
+// runs once per game frame.
 void update();
 
 // Returns the number of connected pads.

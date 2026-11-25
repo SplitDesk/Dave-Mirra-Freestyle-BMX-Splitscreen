@@ -225,6 +225,7 @@ The game's buttons follow a PlayStation pad: 0x1 up, 0x2 down, 0x4 left,
 | 0x68C3F0 | `kTextureTableMaterial` | Slot n's material pointer is at this address + n × 20 (`kTextureTableStride`). |
 | 0x6976C0 / 0x6976C4 | *FrameBufferRaster*, *ZBufferRaster* | RwRaster*; every camera is a sub-raster of the frame buffer. |
 | 0x697770 / 0x697774 | `kScreenWidth`, `kScreenHeight` | int screen size in pixels. |
+| 0x697780 | `kMainWindow` | HWND the game's window, made by WinMain 0x48A460; its window procedure 0x48A800 unacquires the DirectInput devices (0x493890) when it loses the focus. |
 | 0x697778 | `kZglCurrentFlags` | uint32 flags `ZglSetRenderFlags` last applied. |
 
 **zrwCamera** (200 bytes, `game::zrw`): +0x08 flags (bit 1 fog, bit 2

@@ -9,7 +9,12 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <array>
+#include <atomic>
+#include <future>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "common/log.hpp"
@@ -45,13 +50,32 @@ struct Api {
 Api sdl{};
 HMODULE g_dll = nullptr;
 
+// How often the poll thread updates the pads, at most, in milliseconds.
+constexpr DWORD kPollMs = 4;
+
+// A pad as the game's thread sees it: a copy of the poll thread's last look.
+struct PadState {
+    PadInputs held = 0;
+    PadType type = PadType::Unknown;
+    // The labels of the face buttons South, East, West and North, or null.
+    std::array<const char*, 4> face{};
+};
+
 struct Pad {
     SDL_JoystickID id;
     SDL_Gamepad* handle;
 };
 
-// The connected pads in the order they were connected.
+// The poll thread's pads, in the order they were connected.
 std::vector<Pad> g_pads;
+// The pads' state, written by the poll thread and copied by the game's.
+std::mutex g_sharedLock;
+std::vector<PadState> g_shared;
+// The game's thread's copy, taken once a frame by update().
+std::vector<PadState> g_frame;
+
+std::thread g_poller;
+std::atomic<bool> g_stop{false};
 bool g_ready = false;
 
 template <typename T>
@@ -149,52 +173,10 @@ float axis(SDL_Gamepad* pad, SDL_GamepadAxis a) {
     return sdl.GetGamepadAxis(pad, a) / 32767.0f;
 }
 
-}  // namespace
-
-bool init() {
-    if (g_ready) return true;
-    if (!g_dll && !loadSdl()) return false;
-    // SDL has no window of its own, so pads must work without SDL's focus.
-    sdl.SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
-    if (!sdl.Init(SDL_INIT_GAMEPAD)) {
-        BMX_LOG_ERROR("SDL gamepad init failed: %s", sdl.GetError());
-        return false;
-    }
-    int n = 0;
-    if (SDL_JoystickID* ids = sdl.GetGamepads(&n)) {
-        for (int i = 0; i < n; ++i) open(ids[i]);
-        sdl.Free(ids);
-    }
-    if (n == 0) BMX_LOG_INFO("no gamepads connected yet (they can be plugged in any time)");
-    g_ready = true;
-    return true;
-}
-
-void shutdown() {
-    if (!g_ready) return;
-    for (const Pad& p : g_pads) sdl.CloseGamepad(p.handle);
-    g_pads.clear();
-    sdl.Quit();
-    g_ready = false;
-}
-
-void update() {
-    if (!g_ready) return;
-    SDL_Event e;
-    sdl.PumpEvents();
-    while (sdl.PollEvent(&e)) {
-        if (e.type == SDL_EVENT_GAMEPAD_ADDED) open(e.gdevice.which);
-        else if (e.type == SDL_EVENT_GAMEPAD_REMOVED) close(e.gdevice.which);
-    }
-    sdl.UpdateGamepads();
-}
-
-int count() { return static_cast<int>(g_pads.size()); }
-
-bool read(int index, PadInputs& held) {
-    held = 0;
-    if (index < 0 || index >= count()) return false;
-    SDL_Gamepad* p = g_pads[index].handle;
+// The inputs held on a pad: its buttons, and its triggers and stick
+// directions past kPadThreshold.
+PadInputs heldInputs(SDL_Gamepad* p) {
+    PadInputs held = 0;
     for (int b = 0; b < padinput::kButtons; ++b)
         if (sdl.GetGamepadButton(p, static_cast<SDL_GamepadButton>(b))) held |= PadInputs{1} << b;
     auto press = [&](bool on, int input) {
@@ -213,14 +195,12 @@ bool read(int index, PadInputs& held) {
     press(rx > kPadThreshold, padinput::RightXPos);
     press(ry < -kPadThreshold, padinput::RightYNeg);
     press(ry > kPadThreshold, padinput::RightYPos);
-    return true;
+    return held;
 }
 
-PadType type(int index) {
-    if (index < 0 || index >= count()) return PadType::Unknown;
-    SDL_Gamepad* p = g_pads[index].handle;
-    if (!p) return PadType::Unknown;
-
+// The icon family of a pad, by its type or, for pads SDL has no type for, by
+// its face buttons' labels.
+PadType padType(SDL_Gamepad* p) {
     // By the pad's type, the real one first: a PlayStation pad seen through an
     // Xbox emulator is still a PlayStation pad.
     SDL_GamepadType t = SDL_GAMEPAD_TYPE_UNKNOWN;
@@ -256,23 +236,131 @@ PadType type(int index) {
     return t == SDL_GAMEPAD_TYPE_STANDARD ? PadType::Standard : PadType::Unknown;
 }
 
+// The label printed on a pad's face button, or null when SDL has none.
+const char* faceLabel(SDL_Gamepad* p, int input) {
+    if (!sdl.GetGamepadButtonLabel) return nullptr;
+    switch (sdl.GetGamepadButtonLabel(p, static_cast<SDL_GamepadButton>(input))) {
+        case SDL_GAMEPAD_BUTTON_LABEL_A: return "A";
+        case SDL_GAMEPAD_BUTTON_LABEL_B: return "B";
+        case SDL_GAMEPAD_BUTTON_LABEL_X: return "X";
+        case SDL_GAMEPAD_BUTTON_LABEL_Y: return "Y";
+        case SDL_GAMEPAD_BUTTON_LABEL_CROSS: return "Cross";
+        case SDL_GAMEPAD_BUTTON_LABEL_CIRCLE: return "Circle";
+        case SDL_GAMEPAD_BUTTON_LABEL_SQUARE: return "Square";
+        case SDL_GAMEPAD_BUTTON_LABEL_TRIANGLE: return "Triangle";
+        default: return nullptr;
+    }
+}
+
+// Hands the pads' current state to the game's thread.
+void publish() {
+    std::vector<PadState> pads(g_pads.size());
+    for (size_t i = 0; i < g_pads.size(); ++i) {
+        SDL_Gamepad* p = g_pads[i].handle;
+        pads[i].held = heldInputs(p);
+        pads[i].type = padType(p);
+        for (int f = 0; f < 4; ++f) pads[i].face[f] = faceLabel(p, padinput::South + f);
+    }
+    std::lock_guard lock(g_sharedLock);
+    g_shared.swap(pads);
+}
+
+// The poll thread, which SDL lives on. SDL's device watch looks at the
+// message queue of its thread for its own window only, at every update;
+// Windows marks a window as not responding a few seconds after it loses the
+// focus when its thread does that, though the game still runs. So SDL stays
+// off the game's thread; this thread owns no visible window, and serves
+// every message of SDL's hidden windows. Reports whether SDL started.
+void pollLoop(std::promise<bool>* started) {
+    // SDL has no window of its own, so pads must work without SDL's focus.
+    sdl.SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+    if (!sdl.Init(SDL_INIT_GAMEPAD)) {
+        BMX_LOG_ERROR("SDL gamepad init failed: %s", sdl.GetError());
+        started->set_value(false);
+        return;
+    }
+    int n = 0;
+    if (SDL_JoystickID* ids = sdl.GetGamepads(&n)) {
+        for (int i = 0; i < n; ++i) open(ids[i]);
+        sdl.Free(ids);
+    }
+    if (n == 0) BMX_LOG_INFO("no gamepads connected yet (they can be plugged in any time)");
+    publish();
+    started->set_value(true);
+
+    while (!g_stop) {
+        MsgWaitForMultipleObjects(0, nullptr, FALSE, kPollMs, QS_ALLINPUT);
+        MSG msg;
+        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+        SDL_Event e;
+        sdl.PumpEvents();
+        while (sdl.PollEvent(&e)) {
+            if (e.type == SDL_EVENT_GAMEPAD_ADDED) open(e.gdevice.which);
+            else if (e.type == SDL_EVENT_GAMEPAD_REMOVED) close(e.gdevice.which);
+        }
+        sdl.UpdateGamepads();
+        publish();
+    }
+
+    for (const Pad& p : g_pads) sdl.CloseGamepad(p.handle);
+    g_pads.clear();
+    sdl.Quit();
+}
+
+}  // namespace
+
+bool init() {
+    if (g_ready) return true;
+    if (!g_dll && !loadSdl()) return false;
+    std::promise<bool> started;
+    std::future<bool> result = started.get_future();
+    g_stop = false;
+    g_poller = std::thread(pollLoop, &started);
+    if (!result.get()) {
+        g_poller.join();
+        return false;
+    }
+    g_ready = true;
+    update();
+    return true;
+}
+
+void shutdown() {
+    if (!g_ready) return;
+    g_stop = true;
+    g_poller.join();
+    g_shared.clear();
+    g_frame.clear();
+    g_ready = false;
+}
+
+void update() {
+    if (!g_ready) return;
+    std::lock_guard lock(g_sharedLock);
+    g_frame = g_shared;
+}
+
+int count() { return static_cast<int>(g_frame.size()); }
+
+bool read(int index, PadInputs& held) {
+    held = 0;
+    if (index < 0 || index >= count()) return false;
+    held = g_frame[index].held;
+    return true;
+}
+
+PadType type(int index) {
+    return index >= 0 && index < count() ? g_frame[index].type : PadType::Unknown;
+}
+
 std::string inputLabel(int index, int input) {
     using namespace padinput;
-    SDL_Gamepad* p = index >= 0 && index < count() ? g_pads[index].handle : nullptr;
     if (input >= South && input <= North) {
-        if (p && sdl.GetGamepadButtonLabel) {
-            switch (sdl.GetGamepadButtonLabel(p, static_cast<SDL_GamepadButton>(input))) {
-                case SDL_GAMEPAD_BUTTON_LABEL_A: return "A";
-                case SDL_GAMEPAD_BUTTON_LABEL_B: return "B";
-                case SDL_GAMEPAD_BUTTON_LABEL_X: return "X";
-                case SDL_GAMEPAD_BUTTON_LABEL_Y: return "Y";
-                case SDL_GAMEPAD_BUTTON_LABEL_CROSS: return "Cross";
-                case SDL_GAMEPAD_BUTTON_LABEL_CIRCLE: return "Circle";
-                case SDL_GAMEPAD_BUTTON_LABEL_SQUARE: return "Square";
-                case SDL_GAMEPAD_BUTTON_LABEL_TRIANGLE: return "Triangle";
-                default: break;
-            }
-        }
+        if (index >= 0 && index < count())
+            if (const char* label = g_frame[index].face[input - South]) return label;
         static constexpr const char* kFace[] = {"South", "East", "West", "North"};
         return kFace[input];
     }

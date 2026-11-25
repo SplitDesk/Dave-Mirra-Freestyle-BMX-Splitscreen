@@ -305,6 +305,7 @@ inline constexpr uintptr_t kGameCameraObject  = 0x0068FF98;  // the zobjCamera t
 // ---------------------------------------------- engine (ZGE, RenderWare 3) --
 inline constexpr uintptr_t kScreenWidth       = 0x00697770;  // int
 inline constexpr uintptr_t kScreenHeight      = 0x00697774;  // int
+inline constexpr uintptr_t kMainWindow        = 0x00697780;  // HWND the game's window (WinMain 0x48A460)
 inline constexpr uintptr_t kCameraPool        = 0x0067401C;  // the pool of every zrwCamera
 inline constexpr uintptr_t kButtonTextureSlot = 0x0056BFFA;  // uint16 slot of the button font texture (id 0x33)
 // Texture slots (512 of 20 bytes); the material pointer of slot n is at
