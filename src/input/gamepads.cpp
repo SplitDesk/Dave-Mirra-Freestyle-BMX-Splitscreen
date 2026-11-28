@@ -14,7 +14,6 @@
 #include <future>
 #include <mutex>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include "common/log.hpp"
@@ -74,7 +73,10 @@ std::vector<PadState> g_shared;
 // The game's thread's copy, taken once a frame by update().
 std::vector<PadState> g_frame;
 
-std::thread g_poller;
+// The poll thread. A Windows thread rather than a std::thread: the game ends
+// with the thread still running, and a running std::thread destroyed at exit
+// aborts the process.
+HANDLE g_poller = nullptr;
 std::atomic<bool> g_stop{false};
 bool g_ready = false;
 
@@ -271,13 +273,14 @@ void publish() {
 // focus when its thread does that, though the game still runs. So SDL stays
 // off the game's thread; this thread owns no visible window, and serves
 // every message of SDL's hidden windows. Reports whether SDL started.
-void pollLoop(std::promise<bool>* started) {
+DWORD WINAPI pollLoop(void* param) {
+    auto* started = static_cast<std::promise<bool>*>(param);
     // SDL has no window of its own, so pads must work without SDL's focus.
     sdl.SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     if (!sdl.Init(SDL_INIT_GAMEPAD)) {
         BMX_LOG_ERROR("SDL gamepad init failed: %s", sdl.GetError());
         started->set_value(false);
-        return;
+        return 0;
     }
     int n = 0;
     if (SDL_JoystickID* ids = sdl.GetGamepads(&n)) {
@@ -308,6 +311,7 @@ void pollLoop(std::promise<bool>* started) {
     for (const Pad& p : g_pads) sdl.CloseGamepad(p.handle);
     g_pads.clear();
     sdl.Quit();
+    return 0;
 }
 
 }  // namespace
@@ -318,9 +322,15 @@ bool init() {
     std::promise<bool> started;
     std::future<bool> result = started.get_future();
     g_stop = false;
-    g_poller = std::thread(pollLoop, &started);
+    g_poller = CreateThread(nullptr, 0, &pollLoop, &started, 0, nullptr);
+    if (!g_poller) {
+        BMX_LOG_ERROR("the gamepad poll thread could not be started");
+        return false;
+    }
     if (!result.get()) {
-        g_poller.join();
+        WaitForSingleObject(g_poller, INFINITE);
+        CloseHandle(g_poller);
+        g_poller = nullptr;
         return false;
     }
     g_ready = true;
@@ -331,7 +341,9 @@ bool init() {
 void shutdown() {
     if (!g_ready) return;
     g_stop = true;
-    g_poller.join();
+    WaitForSingleObject(g_poller, INFINITE);
+    CloseHandle(g_poller);
+    g_poller = nullptr;
     g_shared.clear();
     g_frame.clear();
     g_ready = false;
